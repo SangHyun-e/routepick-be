@@ -7,6 +7,7 @@ import io.routepickapi.service.PostService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import java.net.URI;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +16,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -29,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/posts")
+@Validated
 public class PostController {
 
     private final PostService postService;
@@ -62,8 +65,10 @@ public class PostController {
     @Operation(summary = "게시글 상세 조회", description = "기본적으로 조회수 +1, incView=false로 비활성화 가능")
     @GetMapping("/{id}")
     public PostResponse detail(
-        @Parameter(description = "게시글 ID") @PathVariable Long id,
-        @Parameter(description = "조회수 증가 여부", example = "true") @RequestParam(defaultValue = "true") boolean incView
+        @Parameter(description = "게시글 ID")
+        @PathVariable(name="id") @Min(1) Long id,
+        @Parameter(description = "조회수 증가 여부", example = "true")
+        @RequestParam(name ="incView", defaultValue = "true") boolean incView
     ) {
         log.debug("GET /posts/{} - incView={}", id, incView);
         return postService.getDetail(id, incView);
@@ -72,7 +77,9 @@ public class PostController {
     // 좋아요+1 API
     @Operation(summary = "좋아요 +1", description = "현재 누적 좋아요 수를 반환")
     @PostMapping("/{id}/like")
-    public LikeResponse like(@Parameter(description = "게시글 ID") @PathVariable Long id) {
+    public LikeResponse like(
+        @Parameter(description = "게시글 ID")
+        @PathVariable(name="id") @Min(1) Long id) {
         int likeCount = postService.like(id);
         log.info("Post Liked: id={}, likeCount={}", id, likeCount);
         return new LikeResponse(likeCount);
@@ -81,7 +88,9 @@ public class PostController {
     // 소프트 삭제
     @Operation(summary = "게시글 소프트 삭제", description = "status=DELETED로 변환(물리삭제 X)")
     @DeleteMapping("/{id}")
-    public ApiMessage softDelete(@Parameter(description = "게시글 ID") @PathVariable Long id) {
+    public ApiMessage softDelete(
+        @Parameter(description = "게시글 ID")
+        @PathVariable(name="id") @Min(1) Long id) {
         postService.softDelete(id);
         log.info("Post Soft-Deleted: id={}", id);
         return new ApiMessage("deleted");
@@ -90,7 +99,9 @@ public class PostController {
     // 게시글 활성화
     @Operation(summary = "게시글 활성화", description = "status=ACTIVE로 전환")
     @PatchMapping("/{id}/activate")
-    public ApiMessage activate(@Parameter(description = "게시글 ID") @PathVariable Long id) {
+    public ApiMessage activate(
+        @Parameter(description = "게시글 ID")
+        @PathVariable(name="id") @Min(1) Long id) {
         postService.activate(id);
         log.info("Post Activated: id={}", id);
         return new ApiMessage("activated");

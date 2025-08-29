@@ -4,11 +4,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
+
 /*
  * 컨트롤러 전역 예외를 JSON 바디로 통일
  * - @RestControllerAdvice: @Controller / @RestController 에서 던진 예외를 가로채 처리
@@ -76,6 +79,28 @@ public class GlobalExceptionHandler {
         log.error("Unexpected error: path={}, msg={}", req.getRequestURI(), e.getMessage(), e);
         ApiErrorResponse body = ApiErrorResponse.of(ErrorType.COMMON_INTERNAL, null, req.getRequestURI(), requestId(req), null);
         return ResponseEntity.status(ErrorType.COMMON_INTERNAL.httpStatus).body(body);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiErrorResponse> handleRese(ResponseStatusException e, HttpServletRequest req) {
+        HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
+
+        ErrorType type = switch (status) {
+            case NOT_FOUND -> ErrorType.COMMON_NOT_FOUND;
+            case BAD_REQUEST -> ErrorType.COMMON_INVALID_INPUT;
+            case FORBIDDEN -> ErrorType.COMMON_FORBIDDEN;
+            default -> ErrorType.COMMON_INTERNAL;
+        };
+
+        ApiErrorResponse body = ApiErrorResponse.of(
+            type,
+            e.getReason(),
+            req.getRequestURI(),
+            requestId(req),
+            null
+        );
+
+        return ResponseEntity.status(status).body(body);
     }
 
     private static Object safeRejectedValue(FieldError fe) {
