@@ -38,7 +38,7 @@ public class PostController {
     @PostMapping
     public ResponseEntity<PostResponse> create(@Valid @RequestBody PostCreateRequest req) {
 
-        log.debug("POST /posts - title='{};, region='{}' tags={}", req.title(), req.region(), req.tags());
+        log.debug("POST /posts - title='{}';, region='{}' tags={}", req.title(), req.region(), req.tags());
         Long id = postService.create(req);
         PostResponse body = postService.getDetail(id, false); // 생성 직후 본분 반환(조회수 증가 X)
 
