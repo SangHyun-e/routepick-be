@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: routepick-api
+server:
+  port: 8080
