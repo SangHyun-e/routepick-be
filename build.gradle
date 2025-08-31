@@ -19,6 +19,8 @@ configurations {
     }
 }
 
+
+
 repositories {
     mavenCentral()
 }
@@ -27,7 +29,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
-    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.11'
 
     runtimeOnly 'com.mysql:mysql-connector-j'
 
@@ -38,6 +40,19 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
+configurations.configureEach {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.springdoc") {
+            useVersion("2.8.11") // Boot 3.5.x ↔ springdoc 2.8.x 매트릭스
+            because("Align springdoc with Spring Boot 3.5.x to avoid NoSuchMethodError")
+        }
+    }
+}
+
+
+
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+
