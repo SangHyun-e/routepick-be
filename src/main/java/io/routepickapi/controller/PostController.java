@@ -109,4 +109,26 @@ public class PostController {
 
     public record LikeResponse(int likeCount) {}
     public record ApiMessage(String message) {}
+
+    /**
+     * 게시글 검색 API
+     *  - region(선택): 지역명 완전일치
+     *  - keyword(선택): 제목/내용 부분일치(대소문자 무시)
+     *  - pageable: page, size, sort(예: sort=createdAt.desc)
+     *  - 반환: 목록 화면용 경량 DTO(Page)
+     */
+    @Operation(
+        summary = "게시글 검색",
+        description = "region(선택), keyword(선택)로 검색. 기본 정렬은 createdAt DESC"
+    )
+    @GetMapping("/search")
+    public Page<PostListItemResponse> search(
+        @Parameter(description = "지역명(완전일치)") @RequestParam(required = false) String region,
+        @Parameter(description = "키워드(제목/본문에 포함)") @RequestParam(required = false) String keyword,
+        @ParameterObject @PageableDefault(size = 20) Pageable pageable
+    ) {
+        log.debug("GET /posts/search - region='{}', keyword='{}', page={}, size={}",
+            region, keyword, pageable.getPageNumber(), pageable.getPageSize());
+        return postService.search(region, keyword, pageable);
+    }
 }

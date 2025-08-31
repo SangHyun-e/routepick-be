@@ -5,6 +5,7 @@ import io.routepickapi.dto.post.PostListItemResponse;
 import io.routepickapi.dto.post.PostResponse;
 import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.post.PostStatus;
+import io.routepickapi.repository.PostQueryRepository;
 import io.routepickapi.repository.PostRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Transactional
 public class PostService {
     private final PostRepository postRepository;
+    private final PostQueryRepository postQueryRepository; // 동적 검색용 QueryDSL 리포지토리
 
     public Long create(PostCreateRequest req) {
         Post post = new Post(req.title(), req.content());
@@ -85,5 +87,19 @@ public class PostService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not found"));
         post.activated();
         log.info("Activate: id={}", id);
+    }
+
+    /**
+     * 검색 서비스
+     * - region(선택): 지역명 완전일치 필터
+     * - keyword(선택): 제목/내용 부분일치(대소문자 무시)
+     * - pageable: 페이지/정렬(기본 createdAt DESC)
+     * - 반환: 목록 화면용 경량 DTO(page)
+     */
+    @Transactional(readOnly = true)
+    public Page<PostListItemResponse> search(String region, String keyword, Pageable pageable) {
+        Page<Post> page = postQueryRepository.searchByRegionAndKeyword(region, keyword, pageable);
+        // 목록 응답은 Lazy 컬렉션(tags) 접근하지 않는 경량 DTO로 매핑 -> Lazy 예외 예방
+        return page.map(PostListItemResponse::from);
     }
 }
