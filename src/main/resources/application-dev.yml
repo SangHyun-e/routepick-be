@@ -7,8 +7,14 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate # 스키마는 Flyway가 책임지고, JPA는 검증만.
     open-in-view: false
+    properties:
+      hibernate.hibernate.format_sql: ture
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
 springdoc:
   swagger-ui:
