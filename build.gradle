@@ -31,6 +31,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.11'
 
+
     // QueryDSL(jakarta 버전) - Boot 3.x, Hibernate 6.x 호환
     implementation 'com.querydsl:querydsl-jpa:5.0.0:jakarta'
     annotationProcessor 'com.querydsl:querydsl-apt:5.0.0:jakarta'
@@ -38,6 +39,9 @@ dependencies {
     // 어노테이션 프로세서가 jakarta.* 타입을 알도록 보조 의존성
     annotationProcessor 'jakarta.annotation:jakarta.annotation-api'
     annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
+
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-mysql'
 
     runtimeOnly 'com.mysql:mysql-connector-j'
 
