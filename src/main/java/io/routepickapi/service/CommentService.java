@@ -25,12 +25,14 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 @Transactional
 public class CommentService {
+
     private final CommentRepository commentRepository;
     private final PostRepository postRepository;
 
     public Long createRoot(Long postId, CommentCreateRequest req) {
         Post post = postRepository.findByIdAndStatus(postId, PostStatus.ACTIVE)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available"));
+            .orElseThrow(
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available"));
 
         Comment comment = Comment.builder()
             .post(post)
@@ -45,10 +47,22 @@ public class CommentService {
 
     public Long createReply(Long postId, Long parentId, CommentCreateRequest req) {
         Post post = postRepository.findByIdAndStatus(postId, PostStatus.ACTIVE)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available"));
+            .orElseThrow(
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available"));
 
         Comment parent = commentRepository.findById(parentId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "parent comment not found"));
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "parent comment not found"));
+
+        // 1) 부모 댓글이 같은 게시글 소속인지 검사 (cross-post 방지)
+        if (!parent.getPost().getId().equals(postId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "parent not in same post");
+        }
+
+        // 2) 부모 상태 검사 (비활성/삭제된 부모에 대댓글 금지)
+        if (parent.getStatus() != CommentStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "parent not active");
+        }
 
         Comment reply = Comment.builder()
             .post(post)
@@ -83,7 +97,7 @@ public class CommentService {
 
         // 4) parentId -> children 맵핑
         Map<Long, List<Comment>> childrenMap = replies.stream()
-            .collect(Collectors.groupingBy(c-> c.getParent().getId()));
+            .collect(Collectors.groupingBy(c -> c.getParent().getId()));
 
         // 5) DTO 변환 (root + children)
         return roots.map(root ->
