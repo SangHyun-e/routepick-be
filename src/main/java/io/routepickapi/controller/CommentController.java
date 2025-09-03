@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/posts")
 @Validated
 public class CommentController {
+
     private final CommentService commentService;
 
     @Operation(summary = "본 댓글 생성", description = "특정 게시글에 본댓글 생성")
@@ -40,12 +41,13 @@ public class CommentController {
     ) {
         Long id = commentService.createRoot(postId, req);
         log.info("Root comment created: postId={}, commentId={}", postId, id);
-        return ResponseEntity.created(URI.create("/comments/" + id))
+        return ResponseEntity
+            .created(URI.create(String.format("/posts/%d/comments/%d", postId, id)))
             .body(new IdResponse(id));
     }
 
     @Operation(summary = "대댓글 생성", description = "특정 게시글 내 부모 댓글에 대댓글 생성")
-    @PostMapping("/{postId}/comments/{parentId}")
+    @PostMapping("/{postId}/comments/{parentId}/replies")
     public ResponseEntity<IdResponse> createReply(
         @Parameter(description = "게시글 ID")
         @PathVariable(name = "postId") @Min(1) Long postId,
@@ -55,7 +57,8 @@ public class CommentController {
     ) {
         Long id = commentService.createReply(postId, parentId, req);
         log.info("Reply created: postId={}, parentId={}, commentId={}", postId, parentId, id);
-        return ResponseEntity.created(URI.create("/comments/" + id))
+        return ResponseEntity
+            .created(URI.create(String.format("/posts/%d/comments/%d", postId, id)))
             .body(new IdResponse(id));
     }
 
@@ -66,9 +69,12 @@ public class CommentController {
         @PathVariable(name = "postId") @Min(1) Long postId,
         @ParameterObject @PageableDefault(size = 20) Pageable pageable
     ) {
-        log.debug("GET /posts/{}/comments page={}, size={}", postId, pageable.getPageNumber(), pageable.getPageSize());
+        log.debug("GET /posts/{}/comments page={}, size={}", postId, pageable.getPageNumber(),
+            pageable.getPageSize());
         return commentService.listRootsWithReplies(postId, pageable);
     }
 
-    public record IdResponse(Long id) {}
+    public record IdResponse(Long id) {
+
+    }
 }
