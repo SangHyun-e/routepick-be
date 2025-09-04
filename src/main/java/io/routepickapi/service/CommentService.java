@@ -135,4 +135,20 @@ public class CommentService {
             likeCount);
         return likeCount;
     }
+
+    @Transactional
+    public void softDelete(Long postId, Long commentId) {
+        log.debug("Delete comment request: postId={}, commentId={}", postId, commentId);
+
+        int updated = commentRepository.updateStatus(
+            postId, commentId, CommentStatus.ACTIVE, CommentStatus.DELETED
+        );
+
+        if (updated == 0) {
+            log.warn("Delete failed (not found or not ACTIVE): postId={}, commentId={}", postId,
+                commentId);
+        }
+
+        log.info("Comment soft-deleted: postId={}, commentId={}", postId, commentId);
+    }
 }

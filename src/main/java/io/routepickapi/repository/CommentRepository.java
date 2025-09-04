@@ -9,7 +9,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 /**
  * 댓글 기본 CRUD + 조회용 쿼리 메서드
@@ -39,11 +38,16 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
         + "where c.id = :commentId "
         + "and c.post.id = :postId "
         + "and c.status = :status")
-    int incrementLikeCount(
-        @Param("postId") Long postId,
-        @Param("commentId") Long commentId,
-        @Param("status") CommentStatus status
-    );
+    int incrementLikeCount(Long postId, Long commentId, CommentStatus status);
+
+    // 소프트 삭제 (ACTIVE -> DELETED)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Comment c "
+        + "set c.status = :to "
+        + "where c.id = :commentId "
+        + "and c.post.id = :postId "
+        + "and c.status = :from")
+    int updateStatus(Long postId, Long commentId, CommentStatus from, CommentStatus to);
 
     // 필요 시 조회용
     Optional<Comment> findByIdAndPostIdAndStatus(Long id, Long postId, CommentStatus status);

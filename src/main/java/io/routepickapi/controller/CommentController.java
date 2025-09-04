@@ -16,6 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -89,6 +90,20 @@ public class CommentController {
         log.info("Reply liked: postId={}, commentId={}, likeCount={}", postId, commentId,
             likeCount);
         return ResponseEntity.ok(new LikeResponse(commentId, likeCount));
+    }
+
+    @Operation(summary = "댓글 삭제(소프트)", description = "특정 게시글 내 댓글을 소프트 삭제합니다.")
+    @DeleteMapping("/{postId}/comments/{commentId}")
+    public ResponseEntity<Void> delete(
+        @Parameter(description = "게시글 ID") @PathVariable @Min(1) Long postId,
+        @Parameter(description = "댓글 ID") @PathVariable @Min(1) Long commentId
+    ) {
+        log.debug("DELETE /posts/{}/comments/{} - request received", postId, commentId);
+
+        commentService.softDelete(postId, commentId);
+
+        log.info("Comment soft-deleted: postId={}, commentId={}", postId, commentId);
+        return ResponseEntity.noContent().build();
     }
 
     public record IdResponse(Long id) {
