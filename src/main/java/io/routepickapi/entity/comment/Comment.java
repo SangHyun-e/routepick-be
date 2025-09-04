@@ -36,18 +36,19 @@ import lombok.ToString;
 @Entity
 @Table(name = "comments")
 public class Comment extends BaseEntity {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     // 어떤 게시글의 댓글인지
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name="post_id", nullable = false)
+    @JoinColumn(name = "post_id", nullable = false)
     private Post post;
 
     // 부모 댓글(본댓글이면 null)
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name="parent_id")
+    @JoinColumn(name = "parent_id")
     private Comment parent;
 
     // 자식 댓글 목록*양방향 편의용: 깊은 트리 로딩은 주의)
@@ -81,8 +82,11 @@ public class Comment extends BaseEntity {
 
     // 도메인 메서드
     public void setPostAndParent(Post post, Comment parent) {
-        if (post == null) throw new IllegalArgumentException("post must not be null");
-        if (parent != null && parent.getPost() != null && !parent.getPost().getId().equals(post.getId())) {
+        if (post == null) {
+            throw new IllegalArgumentException("post must not be null");
+        }
+        if (parent != null && parent.getPost() != null && !parent.getPost().getId()
+            .equals(post.getId())) {
             throw new IllegalArgumentException("parent comment belongs to a different post");
         }
         this.post = post;
@@ -91,12 +95,21 @@ public class Comment extends BaseEntity {
     }
 
     public void changeContent(String content) {
-        if (content == null || content.isBlank()) throw new IllegalArgumentException("content must not be blank");
-        if (content.length() > 1000) throw new IllegalArgumentException("content length must be <= 1000");
+        if (content == null || content.isBlank()) {
+            throw new IllegalArgumentException("content must not be blank");
+        }
+        if (content.length() > 1000) {
+            throw new IllegalArgumentException("content length must be <= 1000");
+        }
         this.content = content;
     }
 
-    public void increaseLike() { this.likeCount++; }
-    public void softDelete() { this.status = CommentStatus.DELETED; }
+    public void increaseLike() {
+        this.likeCount++;
+    }
+
+    public void softDelete() {
+        this.status = CommentStatus.DELETED;
+    }
 
 }
