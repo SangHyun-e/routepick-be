@@ -107,4 +107,32 @@ public class CommentService {
             )
         );
     }
+
+    @Transactional
+    public int like(Long postId, Long commentId) {
+        // 원자적 like_count + 1
+        log.debug("Request like: postId={}, commentId={}", postId, commentId);
+        int updated = commentRepository.incrementLikeCount(postId, commentId, CommentStatus.ACTIVE);
+
+        if (updated == 0) {
+            log.warn("Like failed: not found or inactive (postId={}, commentId={})", postId,
+                commentId);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "comment not available");
+        }
+
+        // 갱신된 카운트 조회해서 반환
+        int likeCount = commentRepository
+            .findByIdAndPostIdAndStatus(commentId, postId, CommentStatus.ACTIVE)
+            .map(Comment::getLikeCount)
+            .orElseThrow(
+                () -> {
+                    log.error("Like succeed but reload failed (postId={}, commentId={})", postId,
+                        commentId);
+                    return new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "comment not available");
+                });
+        log.info("Like increased: postId={}, commentId={}, likeCount={}", postId, commentId,
+            likeCount);
+        return likeCount;
+    }
 }

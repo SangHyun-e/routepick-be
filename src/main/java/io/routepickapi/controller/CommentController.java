@@ -74,7 +74,28 @@ public class CommentController {
         return commentService.listRootsWithReplies(postId, pageable);
     }
 
+    @Operation(summary = "댓글 좋아요", description = "특정 게시글 내 댓글의 좋아요를 1 증가")
+    @PostMapping("/{postId}/comments/{commentId}/like")
+    public ResponseEntity<LikeResponse> like(
+        @Parameter(description = "게시글 ID")
+        @PathVariable @Min(1) Long postId,
+        @Parameter(description = "댓글 ID")
+        @PathVariable @Min(1) Long commentId
+    ) {
+        log.debug("POST /posts/{}/comments/{}/like", postId, commentId);
+
+        int likeCount = commentService.like(postId, commentId);
+
+        log.info("Reply liked: postId={}, commentId={}, likeCount={}", postId, commentId,
+            likeCount);
+        return ResponseEntity.ok(new LikeResponse(commentId, likeCount));
+    }
+
     public record IdResponse(Long id) {
+
+    }
+
+    public record LikeResponse(Long id, int likeCount) {
 
     }
 }
