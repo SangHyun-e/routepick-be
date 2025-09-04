@@ -16,6 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -74,7 +75,42 @@ public class CommentController {
         return commentService.listRootsWithReplies(postId, pageable);
     }
 
+    @Operation(summary = "댓글 좋아요", description = "특정 게시글 내 댓글의 좋아요를 1 증가")
+    @PostMapping("/{postId}/comments/{commentId}/like")
+    public ResponseEntity<LikeResponse> like(
+        @Parameter(description = "게시글 ID")
+        @PathVariable @Min(1) Long postId,
+        @Parameter(description = "댓글 ID")
+        @PathVariable @Min(1) Long commentId
+    ) {
+        log.debug("POST /posts/{}/comments/{}/like", postId, commentId);
+
+        int likeCount = commentService.like(postId, commentId);
+
+        log.info("Reply liked: postId={}, commentId={}, likeCount={}", postId, commentId,
+            likeCount);
+        return ResponseEntity.ok(new LikeResponse(commentId, likeCount));
+    }
+
+    @Operation(summary = "댓글 삭제(소프트)", description = "특정 게시글 내 댓글을 소프트 삭제합니다.")
+    @DeleteMapping("/{postId}/comments/{commentId}")
+    public ResponseEntity<Void> delete(
+        @Parameter(description = "게시글 ID") @PathVariable @Min(1) Long postId,
+        @Parameter(description = "댓글 ID") @PathVariable @Min(1) Long commentId
+    ) {
+        log.debug("DELETE /posts/{}/comments/{} - request received", postId, commentId);
+
+        commentService.softDelete(postId, commentId);
+
+        log.info("Comment soft-deleted: postId={}, commentId={}", postId, commentId);
+        return ResponseEntity.noContent().build();
+    }
+
     public record IdResponse(Long id) {
+
+    }
+
+    public record LikeResponse(Long id, int likeCount) {
 
     }
 }
