@@ -3,6 +3,7 @@ package io.routepickapi.controller;
 import io.routepickapi.dto.post.PostCreateRequest;
 import io.routepickapi.dto.post.PostListItemResponse;
 import io.routepickapi.dto.post.PostResponse;
+import io.routepickapi.dto.post.PostUpdateRequest;
 import io.routepickapi.service.PostService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -42,7 +43,7 @@ public class PostController {
     @PostMapping
     public ResponseEntity<PostResponse> create(@Valid @RequestBody PostCreateRequest req) {
 
-        log.debug("POST /posts - title='{}';, region='{}' tags={}", req.title(), req.region(),
+        log.debug("POST /posts - title='{}', region='{}' tags={}", req.title(), req.region(),
             req.tags());
         Long id = postService.create(req);
         PostResponse body = postService.getDetail(id, false); // 생성 직후 본분 반환(조회수 증가 X)
@@ -130,6 +131,24 @@ public class PostController {
         log.debug("GET /posts/search - region='{}', keyword='{}', page={}, size={}",
             region, keyword, pageable.getPageNumber(), pageable.getPageSize());
         return postService.search(region, keyword, pageable);
+    }
+
+    @PatchMapping("/{id}")
+    @Operation(summary = "게시글 수정", description = "전달된 필드만 변경하고, 수정된 게시글 200 반환")
+    public ResponseEntity<PostResponse> update(
+        @Parameter(description = "게시글 ID") @PathVariable(name = "id") @Min(1) Long id,
+        @Valid @RequestBody PostUpdateRequest req
+    ) {
+        log.debug(
+            "PATCH /posts/{} - title?={}, content?={}, region?={}, lat?={}, lon?={}, tags?={}",
+            id,
+            req.title() != null, req.content() != null, req.region() != null,
+            req.latitude() != null, req.longitude() != null, req.tags() != null);
+
+        PostResponse body = postService.update(id, req);
+
+        log.info("Post Updated: id={}", id);
+        return ResponseEntity.ok(body);
     }
 
 
