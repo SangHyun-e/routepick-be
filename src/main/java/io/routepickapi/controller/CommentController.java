@@ -2,6 +2,7 @@ package io.routepickapi.controller;
 
 import io.routepickapi.dto.comment.CommentCreateRequest;
 import io.routepickapi.dto.comment.CommentResponse;
+import io.routepickapi.dto.comment.CommentUpdateRequest;
 import io.routepickapi.service.CommentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -18,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -104,6 +106,21 @@ public class CommentController {
 
         log.info("Comment soft-deleted: postId={}, commentId={}", postId, commentId);
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "댓글 내용 수정", description = "ACTIVE 상태의 댓글 내용만 수정 가능")
+    @PatchMapping("/{postId}/comments/{commentId}")
+    public ResponseEntity<CommentResponse> update(
+        @Parameter(description = "게시글 ID") @PathVariable @Min(1) Long postId,
+        @Parameter(description = "댓글 ID") @PathVariable @Min(1) Long commentId,
+        @Valid @RequestBody CommentUpdateRequest req
+    ) {
+        log.debug("PATCH /posts/{}/comments/{} - request received", postId, commentId);
+
+        CommentResponse updated = commentService.updateContent(postId, commentId, req);
+
+        log.info("Comment updated: postId={}, commentId={}", postId, commentId);
+        return ResponseEntity.ok(updated); // 200 OK + 갱신된 리소스 반환
     }
 
     public record IdResponse(Long id) {
