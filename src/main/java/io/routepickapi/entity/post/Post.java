@@ -23,7 +23,7 @@ import lombok.Setter;
 
 @Entity
 @Table(
-    name="posts",
+    name = "posts",
     indexes = {
         @Index(name = "idx_posts_created_at", columnList = "created_at"),
         @Index(name = "idx_posts_region_created_at", columnList = "region, created_at"),
@@ -33,6 +33,7 @@ import lombok.Setter;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Post extends BaseEntity {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -70,8 +71,12 @@ public class Post extends BaseEntity {
     private List<String> tags = new ArrayList<>();
 
     public Post(String title, String content) {
-        if (title == null || title.isBlank()) throw new IllegalArgumentException("title required");
-        if (content == null || content.isBlank()) throw new IllegalArgumentException("content required");
+        if (title == null || title.isBlank()) {
+            throw new IllegalArgumentException("title required");
+        }
+        if (content == null || content.isBlank()) {
+            throw new IllegalArgumentException("content required");
+        }
         this.title = title;
         this.content = content;
     }
@@ -83,16 +88,47 @@ public class Post extends BaseEntity {
 
     public void setTags(List<String> tags) {
         this.tags.clear();
-        if (tags == null) return;
+        if (tags == null) {
+            return;
+        }
         for (String t : tags) {
-            if (t != null && !t.isBlank() && t.length() <= 40) this.tags.add(t);
+            if (t != null && !t.isBlank() && t.length() <= 40) {
+                this.tags.add(t);
+            }
         }
     }
 
-    public void hide() { this.status = PostStatus.HIDDEN; }
-    public void softDelete() { this.status = PostStatus.DELETED; }
-    public void activated() { this.status = PostStatus.ACTIVE; }
+    public void changeTitle(String title) {
+        if (title == null || title.isBlank() || title.length() > 120) {
+            throw new IllegalArgumentException("invalid title");
+        }
+        this.title = title;
+    }
 
-    public void increaseView() { this.viewCount++; }
-    public void increaseLike() { this.likeCount++; }
+    public void changeContent(String content) {
+        if (content == null || content.isBlank() || content.length() > 4000) {
+            throw new IllegalArgumentException("invalid content");
+        }
+        this.content = content;
+    }
+
+    public void hide() {
+        this.status = PostStatus.HIDDEN;
+    }
+
+    public void softDelete() {
+        this.status = PostStatus.DELETED;
+    }
+
+    public void activated() {
+        this.status = PostStatus.ACTIVE;
+    }
+
+    public void increaseView() {
+        this.viewCount++;
+    }
+
+    public void increaseLike() {
+        this.likeCount++;
+    }
 }
