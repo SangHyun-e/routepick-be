@@ -77,23 +77,18 @@ public class CommentService {
 
     @Transactional(readOnly = true)
     public Page<CommentResponse> listRootsWithReplies(Long postId, Pageable pageable) {
-        // 1) 본댓글 페이지(최신순)
-        Page<Comment> roots = commentRepository
-            .findByPostIdAndParentIsNullAndStatusOrderByCreatedAtDesc(
-                postId, CommentStatus.ACTIVE, pageable
-            );
+        // 1) 루트 페이지 (QueryDSL 교체)
+        Page<Comment> roots = commentRepository.findRootsForList(postId, pageable);
 
-        // 2) 본댓글 ID 수집
+        // 2) 부모댓글 ID 수집
         List<Long> parentIds = roots.getContent().stream()
             .map(Comment::getId)
             .toList();
 
-        // 3) 대댓글 일괄 조회(작성시간 오름차순)
+        // 3) 대댓글 일괄 조회(작성시간 오름차순, QueryDSL 교체)
         List<Comment> replies = parentIds.isEmpty()
             ? List.of()
-            : commentRepository.findByParentIdInAndStatusOrderByCreatedAtAsc(
-                parentIds, CommentStatus.ACTIVE
-            );
+            : commentRepository.findActiveReplies(parentIds);
 
         // 4) parentId -> children 맵핑
         Map<Long, List<Comment>> childrenMap = replies.stream()

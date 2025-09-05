@@ -20,7 +20,6 @@ configurations {
 }
 
 
-
 repositories {
     mavenCentral()
 }
@@ -60,7 +59,6 @@ configurations.configureEach {
         }
     }
 }
-
 
 
 tasks.named('test') {
