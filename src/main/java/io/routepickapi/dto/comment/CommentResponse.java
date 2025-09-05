@@ -16,13 +16,20 @@ public record CommentResponse(
     LocalDateTime createdAt,
     List<CommentResponse> replies
 ) {
+
+    private static String maskIfDeleted(Comment c) {
+        return (c.getStatus() == CommentStatus.DELETED)
+            ? "(삭제된 댓글입니다)"
+            : c.getContent();
+    }
+
     public static CommentResponse from(Comment c) {
         Long pId = (c.getParent() == null) ? null : c.getParent().getId();
         return new CommentResponse(
             c.getId(),
             pId,
             c.getDepth(),
-            c.getContent(),
+            maskIfDeleted(c),
             c.getLikeCount(),
             c.getStatus(),
             c.getCreatedAt(),
@@ -40,7 +47,7 @@ public record CommentResponse(
             root.getId(),
             pId,
             root.getDepth(),
-            root.getContent(),
+            maskIfDeleted(root),
             root.getLikeCount(),
             root.getStatus(),
             root.getCreatedAt(),
