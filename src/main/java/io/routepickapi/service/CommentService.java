@@ -2,6 +2,7 @@ package io.routepickapi.service;
 
 import io.routepickapi.dto.comment.CommentCreateRequest;
 import io.routepickapi.dto.comment.CommentResponse;
+import io.routepickapi.dto.comment.CommentUpdateRequest;
 import io.routepickapi.entity.comment.Comment;
 import io.routepickapi.entity.comment.CommentStatus;
 import io.routepickapi.entity.post.Post;
@@ -145,6 +146,21 @@ public class CommentService {
         }
 
         log.info("Comment soft-deleted: postId={}, commentId={}", postId, commentId);
+    }
+
+    @Transactional
+    public CommentResponse updateContent(Long postId, Long commentId, CommentUpdateRequest req) {
+        // ACTIVE 인 대상만 수정 허용
+        Comment c = commentRepository
+            .findByIdAndPostIdAndStatus(commentId, postId, CommentStatus.ACTIVE)
+            .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND, "comment not available"
+            ));
+        
+        c.changeContent(req.content()); // 엔티티 유효성 검증 포함(<=1000, not blank)
+
+        log.info("Comment updated: postId={}, commentId={}", postId, commentId);
+        return CommentResponse.from(c); // DTO 마스킹 규칙 적용
     }
 
 
