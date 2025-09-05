@@ -91,12 +91,12 @@ public class PostController {
     // 소프트 삭제
     @Operation(summary = "게시글 소프트 삭제", description = "status=DELETED로 변환(물리삭제 X)")
     @DeleteMapping("/{id}")
-    public ApiMessage softDelete(
+    public ResponseEntity<Void> softDelete(
         @Parameter(description = "게시글 ID")
         @PathVariable(name = "id") @Min(1) Long id) {
         postService.softDelete(id);
         log.info("Post Soft-Deleted: id={}", id);
-        return new ApiMessage("deleted");
+        return ResponseEntity.noContent().build(); // 반환값 204로 수정
     }
 
     // 게시글 활성화
@@ -131,6 +131,7 @@ public class PostController {
             region, keyword, pageable.getPageNumber(), pageable.getPageSize());
         return postService.search(region, keyword, pageable);
     }
+
 
     public record LikeResponse(int likeCount) {
 
