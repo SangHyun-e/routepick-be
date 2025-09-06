@@ -7,8 +7,11 @@ import io.routepickapi.entity.comment.Comment;
 import io.routepickapi.entity.comment.CommentStatus;
 import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.post.PostStatus;
+import io.routepickapi.entity.user.User;
+import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.repository.CommentRepository;
 import io.routepickapi.repository.PostRepository;
+import io.routepickapi.repository.UserRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -29,8 +32,9 @@ public class CommentService {
 
     private final CommentRepository commentRepository;
     private final PostRepository postRepository;
+    private final UserRepository userRepository;
 
-    public Long createRoot(Long postId, CommentCreateRequest req) {
+    public Long createRoot(Long postId, Long currentUserId, CommentCreateRequest req) {
         Post post = postRepository.findByIdAndStatus(postId, PostStatus.ACTIVE)
             .orElseThrow(
                 () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available"));
@@ -41,12 +45,21 @@ public class CommentService {
             .content(req.content())
             .build();
 
+        if (currentUserId != null) {
+            User author = userRepository.findByIdAndStatus(currentUserId, UserStatus.ACTIVE)
+                .orElseThrow(
+                    () -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid user"));
+            comment.setAuthor(author);
+        }
+
         Long id = commentRepository.save(comment).getId();
-        log.info("Create root comment: postId={}, commentId={}", postId, id);
+        log.info("Create root comment: postId={}, commentId={}, authorId={}", postId, id,
+            comment.getAuthor() != null ? comment.getAuthor().getId() : null);
         return id;
     }
 
-    public Long createReply(Long postId, Long parentId, CommentCreateRequest req) {
+    public Long createReply(Long postId, Long parentId, Long currentUserId,
+        CommentCreateRequest req) {
         Post post = postRepository.findByIdAndStatus(postId, PostStatus.ACTIVE)
             .orElseThrow(
                 () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available"));
@@ -71,8 +84,16 @@ public class CommentService {
             .content(req.content())
             .build();
 
+        if (currentUserId != null) {
+            User author = userRepository.findByIdAndStatus(currentUserId, UserStatus.ACTIVE)
+                .orElseThrow(
+                    () -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid user"));
+            reply.setAuthor(author);
+        }
+
         Long id = commentRepository.save(reply).getId();
-        log.info("Create reply: postId={}, parentId={}, commentId={}", postId, parentId, id);
+        log.info("Create reply: postId={}, parentId={}, commentId={}, authorId={}", postId,
+            parentId, id, reply.getAuthor() != null ? reply.getAuthor().getId() : null);
         return id;
     }
 
@@ -156,7 +177,7 @@ public class CommentService {
             .orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.NOT_FOUND, "comment not available"
             ));
-        
+
         c.changeContent(req.content()); // 엔티티 유효성 검증 포함(<=1000, not blank)
 
         log.info("Comment updated: postId={}, commentId={}", postId, commentId);

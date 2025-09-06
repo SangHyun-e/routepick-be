@@ -6,8 +6,11 @@ import io.routepickapi.dto.post.PostResponse;
 import io.routepickapi.dto.post.PostUpdateRequest;
 import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.post.PostStatus;
+import io.routepickapi.entity.user.User;
+import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.repository.PostQueryRepository;
 import io.routepickapi.repository.PostRepository;
+import io.routepickapi.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -25,8 +28,9 @@ public class PostService {
 
     private final PostRepository postRepository;
     private final PostQueryRepository postQueryRepository; // 동적 검색용 QueryDSL 리포지토리
+    private final UserRepository userRepository;
 
-    public Long create(PostCreateRequest req) {
+    public Long create(PostCreateRequest req, Long currentUserId) {
         Post post = new Post(req.title(), req.content());
         if (req.latitude() != null || req.longitude() != null) {
             post.setCoordinates(req.latitude(), req.longitude());
@@ -37,9 +41,16 @@ public class PostService {
         }
         post.setTags(req.tags());
 
+        if (currentUserId != null) {
+            User author = userRepository.findByIdAndStatus(currentUserId, UserStatus.ACTIVE)
+                .orElseThrow(
+                    () -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid user"));
+            post.setAuthor(author);
+        }
+
         Long id = postRepository.save(post).getId();
-        log.info("Create Post: id={}, title='{}', region='{}'", id, post.getTitle(),
-            post.getRegion());
+        log.info("Create Post: id={}, title='{}', region='{}', authorId={}", id, post.getTitle(),
+            post.getRegion(), (post.getAuthor() != null ? post.getAuthor().getId() : null));
         return id;
     }
 

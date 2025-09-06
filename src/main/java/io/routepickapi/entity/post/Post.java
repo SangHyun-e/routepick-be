@@ -1,6 +1,7 @@
 package io.routepickapi.entity.post;
 
 import io.routepickapi.common.model.BaseEntity;
+import io.routepickapi.entity.user.User;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -13,6 +14,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.util.ArrayList;
 import java.util.List;
@@ -69,6 +71,12 @@ public class Post extends BaseEntity {
     @CollectionTable(name = "post_tags", joinColumns = @JoinColumn(name = "post_id"))
     @Column(name = "tag", length = 40)
     private List<String> tags = new ArrayList<>();
+
+    // 글 작성자
+    @Setter
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "user_id")
+    private User author;
 
     public Post(String title, String content) {
         if (title == null || title.isBlank()) {

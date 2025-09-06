@@ -7,6 +7,7 @@ import io.routepickapi.dto.post.PostUpdateRequest;
 import io.routepickapi.service.PostService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import java.net.URI;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -38,17 +40,20 @@ public class PostController {
     private final PostService postService;
 
     // 게시글 생성 API
-    @Operation(summary = "게시글 생성", description = "title/content 필수, 선택적으로 region/좌표/tags 지정 가능")
+    @Operation(summary = "게시글 생성", description = "title/content 필수, 선택적으로 region/좌표/tags 지정 가능, X-User-Id 헤더로 작성자 임시 지정")
     // Swagger에 요약/설명 등 추가
     @PostMapping
-    public ResponseEntity<PostResponse> create(@Valid @RequestBody PostCreateRequest req) {
+    public ResponseEntity<PostResponse> create(
+        @Parameter(name = "X-User-Id", in = ParameterIn.HEADER, required = false, description = "임시 작성자 ID(테스트용)", example = "1")
+        @RequestHeader(value = "X-User-Id", required = false) Long userId,
+        @Valid @RequestBody PostCreateRequest req) {
 
-        log.debug("POST /posts - title='{}', region='{}' tags={}", req.title(), req.region(),
-            req.tags());
-        Long id = postService.create(req);
+        log.debug("POST /posts - userId={}, title='{}', region='{}' tags={}", userId, req.title(),
+            req.region(), req.tags());
+        Long id = postService.create(req, userId);
         PostResponse body = postService.getDetail(id, false); // 생성 직후 본분 반환(조회수 증가 X)
 
-        log.info("Post Created: id={}", id);
+        log.info("Post Created: id={}, authorId={}", id, userId);
 
         return ResponseEntity.created(URI.create("/posts/" + id)).body(body);
     }
