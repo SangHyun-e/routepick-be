@@ -2,8 +2,8 @@ package io.routepickapi.dto.post;
 
 import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.post.PostStatus;
+import io.routepickapi.entity.user.User;
 import java.time.LocalDateTime;
-import java.util.List;
 
 public record PostListItemResponse(
     Long id,
@@ -12,9 +12,13 @@ public record PostListItemResponse(
     PostStatus status,
     int likeCount,
     int viewCount,
-    LocalDateTime createdAt
+    LocalDateTime createdAt,
+    Long authorId,
+    String authorNickname
 ) {
+
     public static PostListItemResponse from(Post p) {
+        User a = p.getAuthor();
         return new PostListItemResponse(
             p.getId(),
             p.getTitle(),
@@ -22,7 +26,9 @@ public record PostListItemResponse(
             p.getStatus(),
             p.getLikeCount(),
             p.getViewCount(),
-            p.getCreatedAt()
+            p.getCreatedAt(),
+            a != null ? a.getId() : null,
+            a != null ? a.getNickname() : null
         );
     }
 }
