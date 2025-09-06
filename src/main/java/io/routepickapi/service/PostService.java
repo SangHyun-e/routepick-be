@@ -56,27 +56,45 @@ public class PostService {
     }
 
     public PostResponse getDetail(Long id, boolean increaseView) {
+        // 1) 존재/상태 확인 + 태그 fetch join
         Post post = postRepository.findWithTagsById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not found"));
-
         if (post.getStatus() != PostStatus.ACTIVE) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available");
         }
 
+        // 2) 조회수 증가를 DB에서 원자적으로 처리
         if (increaseView) {
+            int updated = postRepository.incrementViewCount(id, PostStatus.ACTIVE);
+            if (updated == 0) {
+                // ACTIVE 가 아닌 상태로 바뀌었을 가능성 방어
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available");
+            }
+            // 현재 영속성 컨텍스트의 pos t는 아직 예전 viewCount 이므로 화면 일관성을 위해 메모리도 +1
             post.increaseView();
-            log.debug("Increase View: id={}, newViewCount={}", id, post.getViewCount());
+            ;
+            log.debug("Increase View (atomic): id={}, newViewCount={}", id, post.getViewCount());
         }
         return PostResponse.from(post);
     }
 
     public int like(Long id) {
-        Post post = postRepository.findByIdAndStatus(id, PostStatus.ACTIVE)
-            .orElseThrow(
-                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available"));
-        post.increaseLike();
-        log.debug("Increase Like: id={}, newLikeCount={}", id, post.getLikeCount());
-        return post.getLikeCount();
+        log.debug("POST /posts/{}/like - request received", id);
+        // DB 에서 원자적으로 +1
+        int updated = postRepository.incrementLikeCount(id, PostStatus.ACTIVE);
+        if (updated == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available");
+        }
+
+        // 최신 값을 정확히 반환하려면 재조회해서 꺼내는게 안전(동시성 고려)
+        int likeCount = postRepository.findByIdAndStatus(id, PostStatus.ACTIVE)
+            .map(Post::getLikeCount)
+            .orElseThrow(() -> {
+                log.error("Like increased but reload failed (id={})", id);
+                return new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available");
+            });
+        log.info("Post liked: id={}, likeCount={}", id, likeCount);
+        return likeCount;
     }
 
     public void softDelete(Long id) {
