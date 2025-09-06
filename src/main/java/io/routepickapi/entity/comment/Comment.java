@@ -2,6 +2,7 @@ package io.routepickapi.entity.comment;
 
 import io.routepickapi.common.model.BaseEntity;
 import io.routepickapi.entity.post.Post;
+import io.routepickapi.entity.user.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -22,6 +23,7 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.ToString;
 
 /**
@@ -73,6 +75,10 @@ public class Comment extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private CommentStatus status = CommentStatus.ACTIVE;
+    @Setter
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "user_id")
+    private User author;
 
     @Builder
     private Comment(Post post, Comment parent, String content) {
