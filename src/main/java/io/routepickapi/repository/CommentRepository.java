@@ -13,7 +13,7 @@ import org.springframework.data.repository.query.Param;
  * - 스프링 데이터 JPA의 쿼리 메서드 규칙으로 페이징/정렬/리스트 조회 처리
  */
 public interface CommentRepository extends JpaRepository<Comment, Long>, CommentRepositoryCustom {
-    
+
 
     // JPQL 로 like_count 증가
     @Modifying(clearAutomatically = true, flushAutomatically = true)
@@ -42,4 +42,7 @@ public interface CommentRepository extends JpaRepository<Comment, Long>, Comment
 
     // 필요 시 조회용
     Optional<Comment> findByIdAndPostIdAndStatus(Long id, Long postId, CommentStatus status);
+
+    // 특정 게시글 내 특정 댓글의 작성자인지 여부 판단 (postId까지 같이 체크)
+    boolean existsByIdAndPostIdAndAuthorId(Long id, Long postId, Long authorId);
 }
