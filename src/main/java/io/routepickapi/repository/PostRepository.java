@@ -39,4 +39,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     @Query("update Post p set p.viewCount = p.viewCount + 1 "
         + "where p.id = :id and p.status = :status")
     int incrementViewCount(@Param("id") Long id, @Param("status") PostStatus status);
+
+    // 작성자(owner)인지 여부를 PK로 판단
+    boolean existsByIdAndAuthorId(Long id, Long authorId);
 }
