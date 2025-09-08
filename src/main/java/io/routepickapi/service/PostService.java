@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -108,6 +109,7 @@ public class PostService {
         return likeCount;
     }
 
+    @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
     public void softDelete(Long id) {
         Post post = postRepository.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not found"));
@@ -115,6 +117,7 @@ public class PostService {
         log.info("Soft Delete: id={}", id);
     }
 
+    @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
     public void activate(Long id) {
         Post post = postRepository.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not found"));
@@ -136,6 +139,7 @@ public class PostService {
         return page.map(PostListItemResponse::from);
     }
 
+    @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
     public PostResponse update(Long id, PostUpdateRequest req) {
         // DELETED 는 수정 불가, ACTIVE/HIDDEN 은 수정 허용
         Post post = postRepository.findById(id)

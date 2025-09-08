@@ -20,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -154,6 +155,7 @@ public class CommentService {
     }
 
     @Transactional
+    @PreAuthorize("@authz.isCommentOwner(#postId, #commentId) or hasRole('ADMIN')")
     public void softDelete(Long postId, Long commentId) {
         log.debug("Delete comment request: postId={}, commentId={}", postId, commentId);
 
@@ -170,6 +172,7 @@ public class CommentService {
     }
 
     @Transactional
+    @PreAuthorize("@authz.isCommentOwner(#postId, #commentId) or hasRole('ADMIN')")
     public CommentResponse updateContent(Long postId, Long commentId, CommentUpdateRequest req) {
         // ACTIVE 인 대상만 수정 허용
         Comment c = commentRepository
