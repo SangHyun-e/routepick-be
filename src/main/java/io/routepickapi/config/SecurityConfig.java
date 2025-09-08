@@ -14,7 +14,7 @@ import org.springframework.security.web.SecurityFilterChain;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
-    
+
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -29,13 +29,22 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(csrf -> csrf.disable())
+            // SESSION STATELESS (JWT)
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // CSRF 비활성 (폼로그인/세션 미사용)
+            .csrf(csrf -> csrf.disable())
+            // 기본 인증 / 폼 록으니 비활성
+            .httpBasic(b -> b.disable())
+            .formLogin(f -> f.disable())
+
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
-                    "/auth/signup",
-                    "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"
+                    // Swagger UI & OpenAPI
+                    "/v3/api-docs/**",
+                    "/swagger-ui/**",
+                    "/swagger-ui.html"
                 ).permitAll()
+                .requestMatchers("/auth/**").permitAll()
                 .anyRequest().permitAll()
             );
         return http.build();
