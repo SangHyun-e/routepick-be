@@ -1,6 +1,5 @@
 package io.routepickapi.security.jwt;
 
-import io.routepickapi.entity.user.User;
 import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.repository.UserRepository;
 import io.routepickapi.security.AuthUser;
@@ -11,6 +10,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -37,32 +37,32 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
         FilterChain filterChain) throws ServletException, IOException {
 
-        String auth = request.getHeader("Authorization");
+        String auth = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (auth == null || !auth.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
 
         String token = auth.substring(7).trim();
-        if (!jwtProvider.validate(token)) {
-            filterChain.doFilter(request, response);
-            return;
+
+        try {
+            if (jwtProvider.validate(token)
+                && SecurityContextHolder.getContext().getAuthentication() == null) {
+                Long userId = jwtProvider.getUserId(token);
+                userRepository.findByIdAndStatus(userId, UserStatus.ACTIVE).ifPresent(user -> {
+                    AuthUser principal = new AuthUser(user.getId(), user.getEmail(),
+                        user.getNickname());
+                    UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
+                        principal, null, List.of(new SimpleGrantedAuthority("ROLE_USER"))
+                    );
+                    authenticationToken.setDetails(
+                        new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+                });
+            }
+        } catch (Exception e) {
+
         }
-
-        Long userId = jwtProvider.getUserId(token);
-        User user = userRepository.findByIdAndStatus(userId, UserStatus.ACTIVE).orElse(null);
-        if (user == null) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        AuthUser principal = new AuthUser(user.getId(), user.getEmail(), user.getNickname());
-        UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
-            principal, null, List.of(new SimpleGrantedAuthority("ROLE_USER"))
-        );
-        authenticationToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-        SecurityContextHolder.getContext().setAuthentication(authenticationToken);
-
         filterChain.doFilter(request, response);
     }
 }
