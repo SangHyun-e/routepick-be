@@ -43,6 +43,6 @@ public interface CommentRepository extends JpaRepository<Comment, Long>, Comment
     // 필요 시 조회용
     Optional<Comment> findByIdAndPostIdAndStatus(Long id, Long postId, CommentStatus status);
 
-    // 특정 게시글 내 특정 댓글의 작성자인지 여부 판단 (postId까지 같이 체크)
+    // 특정 게시글 내 특정 댓글의 작성자인지 여부 판단 (postId 까지 같이 체크)
     boolean existsByIdAndPostIdAndAuthorId(Long id, Long postId, Long authorId);
 }
