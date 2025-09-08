@@ -1,5 +1,7 @@
 package io.routepickapi.controller;
 
+import io.routepickapi.dto.auth.LoginRequest;
+import io.routepickapi.dto.auth.LoginResponse;
 import io.routepickapi.dto.auth.SignUpRequest;
 import io.routepickapi.dto.auth.SignUpResponse;
 import io.routepickapi.service.AuthService;
@@ -29,5 +31,12 @@ public class AuthController {
     public ResponseEntity<SignUpResponse> signUp(@Valid @RequestBody SignUpRequest req) {
         SignUpResponse res = authService.signUp(req);
         return ResponseEntity.created(URI.create("/users/" + res.id())).body(res);
+    }
+
+    @Operation(summary = "로그인", description = "이메일/비밀번호 로그인 -> JWT 발급")
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest req) {
+        LoginResponse res = authService.login(req);
+        return ResponseEntity.ok(res); // 200 OK, body 에 토큰/만료
     }
 }
