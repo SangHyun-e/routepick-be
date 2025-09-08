@@ -32,6 +32,10 @@ dependencies {
     implementation 'org.springframework.security:spring-security-crypto'
     implementation 'org.springframework.boot:spring-boot-starter-security'
 
+    // JWT 관련 의존성
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.3'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.3'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.3'
 
     // QueryDSL(jakarta 버전) - Boot 3.x, Hibernate 6.x 호환
     implementation 'com.querydsl:querydsl-jpa:5.0.0:jakarta'

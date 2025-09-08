@@ -10,7 +10,7 @@ spring:
       ddl-auto: validate # 스키마는 Flyway가 책임지고, JPA는 검증만.
     open-in-view: false
     properties:
-      hibernate.hibernate.format_sql: ture
+      hibernate.hibernate.format_sql: true
 
   flyway:
     enabled: true
@@ -24,3 +24,8 @@ springdoc:
     path: /v3/api-docs
   packages-to-scan: io.routepickapi
   paths-to-match: /**
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-ttl-seconds: 3600
+  issuer: routepick
