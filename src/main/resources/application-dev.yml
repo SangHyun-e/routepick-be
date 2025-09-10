@@ -34,6 +34,7 @@ springdoc:
 jwt:
   secret: ${JWT_SECRET}
   access-ttl-seconds: 3600
+  refresh-ttl-seconds: 1209600 # 14일
   issuer: routepick
 
 logging:
