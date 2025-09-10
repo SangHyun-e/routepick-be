@@ -1,5 +1,7 @@
 package io.routepickapi.service;
 
+import io.routepickapi.common.error.CustomException;
+import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.auth.LoginRequest;
 import io.routepickapi.dto.auth.LoginResponse;
 import io.routepickapi.dto.auth.SignUpRequest;
@@ -10,11 +12,9 @@ import io.routepickapi.repository.UserRepository;
 import io.routepickapi.security.jwt.JwtProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 @Slf4j
 @Service
@@ -28,8 +28,9 @@ public class AuthService {
 
     // 회원가입
     public SignUpResponse signUp(SignUpRequest req) {
+        // 중복 이메일 409 CONFLICT
         if (userRepository.existsByEmail(req.email())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "email already exists");
+            throw new CustomException(ErrorType.USER_EMAIL_EXISTS);
         }
 
         String hash = passwordEncoder.encode(req.password());
@@ -45,11 +46,11 @@ public class AuthService {
         // 1) ACTIVE 사용자만 로그인 허용
         User user = userRepository.findByEmailAndStatus(req.email(), UserStatus.ACTIVE)
             .orElseThrow(
-                () -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid credentials"));
+                () -> new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS));
 
-        // 2) 패스워드 매칭 (평문 vs 해시)
+        // 2) 패스워드 매칭 (평문 vs 해시) 불일치 -> 401
         if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid credentials");
+            throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
         }
 
         // 3) 액세스 토큰 발급 (subject = userId, claim = email)
