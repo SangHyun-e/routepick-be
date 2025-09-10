@@ -1,5 +1,7 @@
 package io.routepickapi.service;
 
+import io.routepickapi.common.error.CustomException;
+import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.comment.CommentCreateRequest;
 import io.routepickapi.dto.comment.CommentResponse;
 import io.routepickapi.dto.comment.CommentUpdateRequest;
@@ -19,11 +21,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 @Slf4j
 @Service
@@ -38,7 +38,7 @@ public class CommentService {
     public Long createRoot(Long postId, Long currentUserId, CommentCreateRequest req) {
         Post post = postRepository.findByIdAndStatus(postId, PostStatus.ACTIVE)
             .orElseThrow(
-                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available"));
+                () -> new CustomException(ErrorType.POST_NOT_FOUND));
 
         Comment comment = Comment.builder()
             .post(post)
@@ -49,7 +49,7 @@ public class CommentService {
         if (currentUserId != null) {
             User author = userRepository.findByIdAndStatus(currentUserId, UserStatus.ACTIVE)
                 .orElseThrow(
-                    () -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid user"));
+                    () -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
             comment.setAuthor(author);
         }
 
@@ -63,20 +63,19 @@ public class CommentService {
         CommentCreateRequest req) {
         Post post = postRepository.findByIdAndStatus(postId, PostStatus.ACTIVE)
             .orElseThrow(
-                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available"));
+                () -> new CustomException(ErrorType.POST_NOT_FOUND));
 
         Comment parent = commentRepository.findById(parentId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                "parent comment not found"));
+            .orElseThrow(() -> new CustomException(ErrorType.COMMENT_NOT_FOUND));
 
         // 1) 부모 댓글이 같은 게시글 소속인지 검사 (cross-post 방지)
         if (!parent.getPost().getId().equals(postId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "parent not in same post");
+            throw new CustomException(ErrorType.COMMENT_PARENT_MISMATCH);
         }
 
         // 2) 부모 상태 검사 (비활성/삭제된 부모에 대댓글 금지)
         if (parent.getStatus() != CommentStatus.ACTIVE) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "parent not active");
+            throw new CustomException(ErrorType.COMMENT_PARENT_NOT_ACTIVE);
         }
 
         Comment reply = Comment.builder()
@@ -88,7 +87,7 @@ public class CommentService {
         if (currentUserId != null) {
             User author = userRepository.findByIdAndStatus(currentUserId, UserStatus.ACTIVE)
                 .orElseThrow(
-                    () -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid user"));
+                    () -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
             reply.setAuthor(author);
         }
 
@@ -135,7 +134,7 @@ public class CommentService {
         if (updated == 0) {
             log.warn("Like failed: not found or inactive (postId={}, commentId={})", postId,
                 commentId);
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "comment not available");
+            throw new CustomException(ErrorType.COMMENT_NOT_FOUND);
         }
 
         // 갱신된 카운트 조회해서 반환
@@ -146,8 +145,7 @@ public class CommentService {
                 () -> {
                     log.error("Like succeed but reload failed (postId={}, commentId={})", postId,
                         commentId);
-                    return new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "comment not available");
+                    return new CustomException(ErrorType.COMMENT_NOT_FOUND);
                 });
         log.info("Like increased: postId={}, commentId={}, likeCount={}", postId, commentId,
             likeCount);
@@ -164,10 +162,8 @@ public class CommentService {
         );
 
         if (updated == 0) {
-            log.warn("Delete failed (not found or not ACTIVE): postId={}, commentId={}", postId,
-                commentId);
+            throw new CustomException(ErrorType.COMMENT_NOT_FOUND);
         }
-
         log.info("Comment soft-deleted: postId={}, commentId={}", postId, commentId);
     }
 
@@ -177,9 +173,8 @@ public class CommentService {
         // ACTIVE 인 대상만 수정 허용
         Comment c = commentRepository
             .findByIdAndPostIdAndStatus(commentId, postId, CommentStatus.ACTIVE)
-            .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "comment not available"
-            ));
+            .orElseThrow(() -> new CustomException(
+                ErrorType.COMMENT_NOT_FOUND));
 
         c.changeContent(req.content()); // 엔티티 유효성 검증 포함(<=1000, not blank)
 

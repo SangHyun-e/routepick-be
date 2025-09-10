@@ -1,5 +1,7 @@
 package io.routepickapi.service;
 
+import io.routepickapi.common.error.CustomException;
+import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.post.PostCreateRequest;
 import io.routepickapi.dto.post.PostListItemResponse;
 import io.routepickapi.dto.post.PostResponse;
@@ -15,11 +17,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 @Slf4j
 @Service
@@ -45,7 +45,7 @@ public class PostService {
         if (currentUserId != null) {
             User author = userRepository.findByIdAndStatus(currentUserId, UserStatus.ACTIVE)
                 .orElseThrow(
-                    () -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid user"));
+                    () -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
             post.setAuthor(author);
         }
 
@@ -70,9 +70,10 @@ public class PostService {
     public PostResponse getDetail(Long id, boolean increaseView) {
         // 1) 존재/상태 확인 + 태그 fetch join
         Post post = postRepository.findWithTagsById(id)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not found"));
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+
         if (post.getStatus() != PostStatus.ACTIVE) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available");
+            throw new CustomException(ErrorType.POST_NOT_FOUND);
         }
 
         // 2) 조회수 증가를 DB에서 원자적으로 처리
@@ -80,11 +81,10 @@ public class PostService {
             int updated = postRepository.incrementViewCount(id, PostStatus.ACTIVE);
             if (updated == 0) {
                 // ACTIVE 가 아닌 상태로 바뀌었을 가능성 방어
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available");
+                throw new CustomException(ErrorType.POST_NOT_FOUND);
             }
-            // 현재 영속성 컨텍스트의 pos t는 아직 예전 viewCount 이므로 화면 일관성을 위해 메모리도 +1
+            // 현재 영속성 컨텍스트의 post 는 아직 예전 viewCount 이므로 화면 일관성을 위해 메모리도 +1
             post.increaseView();
-            ;
             log.debug("Increase View (atomic): id={}, newViewCount={}", id, post.getViewCount());
         }
         return PostResponse.from(post);
@@ -95,7 +95,7 @@ public class PostService {
         // DB 에서 원자적으로 +1
         int updated = postRepository.incrementLikeCount(id, PostStatus.ACTIVE);
         if (updated == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available");
+            throw new CustomException(ErrorType.POST_NOT_FOUND);
         }
 
         // 최신 값을 정확히 반환하려면 재조회해서 꺼내는게 안전(동시성 고려)
@@ -103,7 +103,7 @@ public class PostService {
             .map(Post::getLikeCount)
             .orElseThrow(() -> {
                 log.error("Like increased but reload failed (id={})", id);
-                return new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available");
+                return new CustomException(ErrorType.POST_NOT_FOUND);
             });
         log.info("Post liked: id={}, likeCount={}", id, likeCount);
         return likeCount;
@@ -112,7 +112,7 @@ public class PostService {
     @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
     public void softDelete(Long id) {
         Post post = postRepository.findById(id)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not found"));
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
         post.softDelete();
         log.info("Soft Delete: id={}", id);
     }
@@ -120,7 +120,7 @@ public class PostService {
     @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
     public void activate(Long id) {
         Post post = postRepository.findById(id)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not found"));
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
         post.activated();
         log.info("Activate: id={}", id);
     }
@@ -143,10 +143,10 @@ public class PostService {
     public PostResponse update(Long id, PostUpdateRequest req) {
         // DELETED 는 수정 불가, ACTIVE/HIDDEN 은 수정 허용
         Post post = postRepository.findById(id)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not found"));
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
 
         if (post.getStatus() == PostStatus.DELETED) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available");
+            throw new CustomException(ErrorType.POST_NOT_FOUND);
         }
 
         // 전달된 필드만 변경 (null은 무시)
