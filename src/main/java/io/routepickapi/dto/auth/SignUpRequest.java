@@ -10,7 +10,7 @@ import jakarta.validation.constraints.Size;
 public record SignUpRequest(
     @NotBlank @Email @Size(max = 255) String email,
     @NotBlank @Size(min = 8, max = 72)
-    @Pattern(regexp = "^\\S+$", message = "password는 공백을 포함할 수 없습니다.")
+    @Pattern(regexp = "^\\S+$", message = "password는 공백을 포함할 수 없습니다.") @Schema(type = "string", format = "password")
     String password,
     @NotBlank @Size(max = 40) String nickname
 ) {
