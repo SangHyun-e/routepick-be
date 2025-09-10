@@ -3,19 +3,42 @@ package io.routepickapi.common.error;
 import org.springframework.http.HttpStatus;
 
 /*
-* API에서 공통으로 쓰는 에러
-* - httpStatus: HTTP 응답 코드
-* - code: FE/로그/문서에서 보는 짧은 식별자
-* - message: 기본 메세지(상세는 예외에서 덮어쓸 수 있음)
-*/
+ *  API 에서 공통으로 쓰는 에러
+ * - httpStatus: HTTP 응답 코드
+ * - code: FE/로그/문서에서 보는 짧은 식별자
+ * - message: 기본 메세지(상세는 예외에서 덮어쓸 수 있음)
+ */
 public enum ErrorType {
+
+    /* === 공통 === */
     COMMON_INVALID_INPUT(HttpStatus.BAD_REQUEST, "CMN-001", "유효하지 않은 입력입니다."),
-    COMMON_NOT_FOUND(HttpStatus.NOT_FOUND, "CMN-404", "대상을 찾을 수 없습니다."),
+    COMMON_UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "CMN-401", "인증이 필요합니다."),
     COMMON_FORBIDDEN(HttpStatus.FORBIDDEN, "CMN-003", "권한이 없습니다."),
+    COMMON_NOT_FOUND(HttpStatus.NOT_FOUND, "CMN-404", "대상을 찾을 수 없습니다."),
+    COMMON_CONFLICT(HttpStatus.CONFLICT, "CMN-409", "이미 존재하거나 충돌이 발생했습니다."),
+    COMMON_RATE_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "CMN-429", "요청이 너무 많습니다."),
     COMMON_INTERNAL(HttpStatus.INTERNAL_SERVER_ERROR, "CMN-500", "서버 오류가 발생했습니다."),
 
-    // 도메인 별
-    POST_NOT_FOUND(HttpStatus.NOT_FOUND, "POST-404", "게시글을 찾을 수 없습니다.");
+    /* === 인증/토큰 === */
+    AUTH_INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "AUTH-401", "이메일 또는 비밀번호가 올바르지 않습니다."),
+    AUTH_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "AUTH-402", "유효하지 않은 토큰입니다."),
+    AUTH_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "AUTH-403", "만료된 토큰입니다."),
+
+    /* === 유저 === */
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER-404", "사용자를 찾을 수 없습니다."),
+    USER_BLOCKED(HttpStatus.FORBIDDEN, "USER-403", "차단된 사용자입니다."),
+    USER_EMAIL_EXISTS(HttpStatus.CONFLICT, "USER-409", "이미 사용 중인 이메일입니다."),
+
+    /* === 게시글 === */
+    POST_NOT_FOUND(HttpStatus.NOT_FOUND, "POST-404", "게시글을 찾을 수 없습니다."),
+    POST_FORBIDDEN(HttpStatus.FORBIDDEN, "POST-403", "게시글에 대한 권한이 없습니다."),
+
+    /* === 댓글 === */
+    COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "CMT-404", "댓글을 찾을 수 없습니다."),
+    COMMENT_FORBIDDEN(HttpStatus.FORBIDDEN, "CMT-403", "댓글에 대한 권한이 없습니다."),
+    COMMENT_NOT_ACTIVE(HttpStatus.BAD_REQUEST, "CMT-400", "비활성/삭제된 댓글입니다."),
+    COMMENT_PARENT_MISMATCH(HttpStatus.BAD_REQUEST, "CMT-401", "부모 댓글이 게시글과 일치하지 않습니다."),
+    COMMENT_PARENT_NOT_ACTIVE(HttpStatus.BAD_REQUEST, "CMT-402", "부모 댓글이 활성 상태가 아닙니다.");
 
     public final HttpStatus httpStatus;
     public final String code;
