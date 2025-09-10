@@ -14,5 +14,11 @@ services:
     depends_on: [ mysql ]
     ports: [ "8081:8080" ]
 
+  redis:
+    image: redis:7-alpine
+    container_name: rp-redis
+    ports: [ "6379:6379" ]
+    command: [ "redis-server", "--appendonly", "yes" ]
+
 volumes:
   db_data:

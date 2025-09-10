@@ -3,6 +3,7 @@ package io.routepickapi.security.jwt;
 import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.repository.UserRepository;
 import io.routepickapi.security.AuthUser;
+import io.routepickapi.service.AccessTokenBlacklistService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -10,6 +11,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -27,27 +29,49 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
 
     private final JwtProvider jwtProvider;
     private final UserRepository userRepository;
+    private final AccessTokenBlacklistService blacklistService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
         FilterChain filterChain) throws ServletException, IOException {
 
         String auth = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (auth == null || !auth.startsWith("Bearer ")) {
+
+        // 1) Authorization 헤더 없거나 Bearer 아님 -> 바로 다음 필터
+        if (auth == null || !auth.regionMatches(true, 0, "Bearer ", 0, 7)) {
             filterChain.doFilter(request, response);
             return;
         }
 
+        // 2) 토큰 추출
         String token = auth.substring(7).trim();
+        if (token.isEmpty()) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // 3) 블랙리스트면 인증 세팅 없이 통과
+        if (blacklistService.isBlacklisted(token)) {
+            log.debug("JWT blacklisted. Skip auth.");
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         try {
-            if (jwtProvider.validate(token)
-                && SecurityContextHolder.getContext().getAuthentication() == null) {
+            // 4) 이미 인증 있으면 패스
+            if (SecurityContextHolder.getContext().getAuthentication() != null) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+
+            // 5) 토큰 유효성 검증 + 사용자 로드
+            if (jwtProvider.validate(token)) {
                 Long userId = jwtProvider.getUserId(token);
                 userRepository.findByIdAndStatus(userId, UserStatus.ACTIVE).ifPresent(user -> {
                     AuthUser principal = new AuthUser(user.getId(), user.getEmail(),
@@ -61,7 +85,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 });
             }
         } catch (Exception e) {
-
+            // 검증 중 오류가 나도 인증만 안 세우고 다음 필터로 넘김
+            log.debug("JWT filter error", e);
         }
         filterChain.doFilter(request, response);
     }

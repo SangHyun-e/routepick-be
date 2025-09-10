@@ -15,6 +15,9 @@ public class JwtProperties {
     // 액세스 토큰 만료(초 단위)
     private long accessTtlSeconds = 3600;
 
+    // 리프레시 토는 만료(초)
+    private long refreshTtlSeconds = 1209600;
+
     private String issuer = "routepick";
 
 
