@@ -10,6 +10,7 @@ import io.jsonwebtoken.security.SecurityException;
 import io.routepickapi.config.JwtProperties;
 import jakarta.annotation.PostConstruct;
 import java.util.Date;
+import java.util.UUID;
 import javax.crypto.SecretKey;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +26,12 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @Slf4j
+
+/**
+ * JWT 발급/검증/파싱 전담 컴포넌트
+ * - access: subject=userId, claim=email
+ * - refresh: subject=userId, claim=tid(토큰 ID), typ=refresh
+ */
 public class JwtProvider {
 
     private final JwtProperties props;
@@ -38,9 +45,6 @@ public class JwtProvider {
 
     /**
      * 액세스 토큰 발급
-     *
-     * @Param userId 내부 PK
-     * @Param email 보조 클레임
      */
     public String generateAccessToken(Long userId, String email) {
         long now = System.currentTimeMillis();
@@ -53,6 +57,32 @@ public class JwtProvider {
             .issuedAt(iat)
             .expiration(exp)
             .claim("email", email)
+            .signWith(secretKey)
+            .compact();
+    }
+
+    /**
+     * 리프레시 토큰용 랜덤 토큰 ID 생성 (JTI 대응)
+     */
+    public String newTokenId() {
+        return UUID.randomUUID().toString();
+    }
+
+    /**
+     * 리프레시 토큰 발급: typ=refresh, tid=토큰 ID 포함
+     */
+    public String generateRefreshToken(Long userId, String tokenId) {
+        long now = System.currentTimeMillis();
+        Date iat = new Date(now);
+        Date exp = new Date(now + props.getRefreshTtlSeconds() * 1000);
+
+        return Jwts.builder()
+            .issuer(props.getIssuer())
+            .subject(String.valueOf(userId))
+            .issuedAt(iat)
+            .expiration(exp)
+            .claim("typ", "refresh")
+            .claim("tid", tokenId)
             .signWith(secretKey)
             .compact();
     }
@@ -72,6 +102,19 @@ public class JwtProvider {
             log.debug("비어있거나 손상된 JWT.", e);
         }
         return false;
+    }
+
+    /**
+     * refresh 전용: typ=refresh 인지 빠르게 확인(옵션)
+     */
+    public boolean isRefreshToken(String token) {
+        try {
+            String typ = Jwts.parser().verifyWith(secretKey).build()
+                .parseSignedClaims(token).getPayload().get("typ", String.class);
+            return "refresh".equals(typ);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // 토큰에서 userId(sub) 추출
