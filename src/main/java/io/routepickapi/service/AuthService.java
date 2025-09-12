@@ -2,6 +2,7 @@ package io.routepickapi.service;
 
 import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
+import io.routepickapi.dto.IssuedTokens;
 import io.routepickapi.dto.auth.LoginRequest;
 import io.routepickapi.dto.auth.LoginResponse;
 import io.routepickapi.dto.auth.SignUpRequest;
@@ -25,6 +26,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
+    private final RefreshTokenService refreshTokenService; // Redis Store
 
     // 회원가입
     public SignUpResponse signUp(SignUpRequest req) {
@@ -41,25 +43,44 @@ public class AuthService {
         return new SignUpResponse(id, user.getEmail(), user.getNickname());
     }
 
-    // 로그인: 이메일로 유저 조회 -> 패스워드 매칭 -> JWT 발급
-    public LoginResponse login(LoginRequest req) {
-        // 1) ACTIVE 사용자만 로그인 허용
+    /**
+     * 로그인: 이메일/비번 검증 → access & refresh 동시 발급
+     * - refresh 는 Redis 에 저장하고, 컨트롤러가 HttpOnly 쿠키로 내려줌
+     */
+    public IssuedTokens loginIssueTokens(LoginRequest req) {
+        // 1) ACTIVE 사용자만 허용
         User user = userRepository.findByEmailAndStatus(req.email(), UserStatus.ACTIVE)
-            .orElseThrow(
-                () -> new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS));
+            .orElseThrow(() -> new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS));
 
-        // 2) 패스워드 매칭 (평문 vs 해시) 불일치 -> 401
+        // 2) 비밀번호 매칭
         if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
             throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
         }
 
-        // 3) 액세스 토큰 발급 (subject = userId, claim = email)
-        String token = jwtProvider.generateAccessToken(user.getId(), user.getEmail());
+        // 3) 액세스 토큰 발급
+        String accessToken = jwtProvider.generateAccessToken(user.getId(), user.getEmail());
+        long accessExpiresInSec = jwtProvider.getRemainingMillis(accessToken) / 1000;
 
-        // 4) 남은 유효시간(초) 계산 후 응답
-        long expiresInSec = jwtProvider.getRemainingMillis(token) / 1000;
+        // 4) 리프레시 토큰 발급 (토큰 ID 포함) + Redis 저장
+        String tokenId = jwtProvider.newTokenId();
+        String refreshToken = jwtProvider.generateRefreshToken(user.getId(), tokenId);
+        long refreshTtlSec = jwtProvider.getRemainingMillis(refreshToken) / 1000;
+        refreshTokenService.save(user.getId(), tokenId, refreshToken);
 
         log.info("User logged in: id={}, email={}", user.getId(), user.getEmail());
-        return new LoginResponse(token, expiresInSec);
+        return new IssuedTokens(
+            accessToken,
+            accessExpiresInSec,
+            refreshToken,
+            refreshTtlSec,
+            tokenId
+        );
+    }
+
+    // 호환용 래퍼(임시: 바디엔 access만, refresh는 컨트롤러에서 쿠키로 세팅
+    @Deprecated // FE/테스트 정리 후 삭제 예정
+    public LoginResponse login(LoginRequest req) {
+        IssuedTokens t = loginIssueTokens(req);
+        return new LoginResponse(t.accessToken(), t.accessExpiresInSec());
     }
 }
