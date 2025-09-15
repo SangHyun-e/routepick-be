@@ -31,8 +31,10 @@ public class AuthService {
 
     // 회원가입
     public SignUpResponse signUp(SignUpRequest req) {
+        log.debug("SignUp requested (email={}, nickname={})", req.email(), req.nickname());
         // 중복 이메일 409 CONFLICT
         if (userRepository.existsByEmail(req.email())) {
+            log.warn("SignUp failed: email already exists (email={})", req.email());
             throw new CustomException(ErrorType.USER_EMAIL_EXISTS);
         }
 
@@ -40,7 +42,7 @@ public class AuthService {
         User user = new User(req.email(), hash, req.nickname());
         Long id = userRepository.save(user).getId();
 
-        log.info("User signed up: id={}, email={}", id, user.getEmail());
+        log.info("SignUp success: id={}, email={}", id, user.getEmail());
         return new SignUpResponse(id, user.getEmail(), user.getNickname());
     }
 
@@ -49,12 +51,17 @@ public class AuthService {
      * - refresh 는 Redis 에 저장하고, 컨트롤러가 HttpOnly 쿠키로 내려줌
      */
     public IssuedTokens loginIssueTokens(LoginRequest req) {
+        log.debug("Login requested (email={})", req.email());
         // 1) ACTIVE 사용자만 허용
         User user = userRepository.findByEmailAndStatus(req.email(), UserStatus.ACTIVE)
-            .orElseThrow(() -> new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS));
+            .orElseThrow(() -> {
+                log.warn("Login failed: user not found or inactive (email={})", req.email());
+                return new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
+            });
 
         // 2) 비밀번호 매칭
         if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
+            log.warn("Login failed: wrong password (email={})", req.email());
             throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
         }
 
@@ -68,7 +75,7 @@ public class AuthService {
         long refreshTtlSec = jwtProvider.getRemainingMillis(refreshToken) / 1000;
         refreshTokenService.save(user.getId(), tokenId, refreshToken);
 
-        log.info("User logged in: id={}, email={}", user.getId(), user.getEmail());
+        log.info("Login success: id={}, email={}, tid={}", user.getId(), user.getEmail(), tokenId);
         return new IssuedTokens(
             accessToken,
             accessExpiresInSec,
@@ -78,7 +85,7 @@ public class AuthService {
         );
     }
 
-    // 호환용 래퍼(임시: 바디엔 access만, refresh는 컨트롤러에서 쿠키로 세팅
+    // 호환용 래퍼(임시: 바디엔 access 만, refresh 는 컨트롤러에서 쿠키로 세팅
     @Deprecated // FE/테스트 정리 후 삭제 예정
     public LoginResponse login(LoginRequest req) {
         IssuedTokens t = loginIssueTokens(req);
@@ -86,8 +93,10 @@ public class AuthService {
     }
 
     public IssuedTokens refresh(String refreshToken) {
+        log.debug("Refresh requested");
         // 1) 형식/서명/만료 검증 + refresh 타입 확인
         if (!jwtProvider.validate(refreshToken) || !jwtProvider.isRefreshToken(refreshToken)) {
+            log.warn("Refresh failed: invalid or non-refresh token");
             throw new CustomException(ErrorType.AUTH_TOKEN_INVALID);
         }
 
@@ -97,12 +106,17 @@ public class AuthService {
         // 2) Redis 에 실제 보관중인지 확인 (도난/재사용 방지)
         String stored = refreshTokenService.get(userId, oldTid);
         if (stored == null || !stored.equals(refreshToken)) {
+            log.warn("Refresh failed: token not stored or mismatched (userId={}, tid={})", userId,
+                oldTid);
             throw new CustomException(ErrorType.AUTH_TOKEN_INVALID);
         }
 
         // 3) 새 Access 발급
         User user = userRepository.findByIdAndStatus(userId, UserStatus.ACTIVE)
-            .orElseThrow(() -> new CustomException(ErrorType.USER_NOT_FOUND));
+            .orElseThrow(() -> {
+                log.warn("Refresh failed: user not active (userId={})", userId);
+                return new CustomException(ErrorType.USER_NOT_FOUND);
+            });
 
         String newAccess = jwtProvider.generateAccessToken(user.getId(), user.getEmail());
         long accessExpSec = jwtProvider.getRemainingMillis(newAccess) / 1000;
@@ -115,25 +129,40 @@ public class AuthService {
         refreshTokenService.delete(userId, oldTid);
         refreshTokenService.save(userId, newTid, newRefresh);
 
+        log.info("Refresh success: userId={}, newTid={}, accessExpSec={}, refreshTtlSec={}", userId,
+            newTid, accessExpSec, refreshTtlSec);
         return new IssuedTokens(newAccess, accessExpSec, newRefresh, refreshTtlSec, newTid);
     }
 
     public void logout(String accessHeader, String refreshCookie) {
+        boolean hasAccess =
+            accessHeader != null && accessHeader.regionMatches(true, 0, "Bearer ", 0, 7);
+        boolean hasRefresh = refreshCookie != null && !refreshCookie.isBlank();
+        log.debug("Logout requested (hasAccessHeader={}, hasRefreshCookie={})", hasAccess,
+            hasRefresh);
+
         // 1) access 블랙리스트 등록
-        if (accessHeader != null && accessHeader.regionMatches(true, 0, "Bearer ", 0, 7)) {
+        if (hasAccess) {
             String at = accessHeader.substring(7).trim();
             if (!at.isEmpty() && jwtProvider.validate(at)) {
                 long ttlMs = jwtProvider.getRemainingMillis(at);
                 blacklistService.blacklist(at, ttlMs);
+                log.info("Access token blacklisted (ttlMs={})", ttlMs);
+            } else {
+                log.debug("Skip blacklist: invalid or empty access token");
             }
         }
 
-        // 2) refresh 삭제
-        if (refreshCookie != null && !refreshCookie.isBlank() && jwtProvider.validate(refreshCookie)
+        // 2) refresh token 삭제
+        if (hasRefresh && jwtProvider.validate(refreshCookie)
             && jwtProvider.isRefreshToken(refreshCookie)) {
             Long uid = jwtProvider.getUserId(refreshCookie);
             String tid = jwtProvider.getTokenId(refreshCookie);
             refreshTokenService.delete(uid, tid);
+            log.info("Refresh token deleted (userId={}, tid={})", uid, tid);
+        } else if (hasRefresh) {
+            log.debug("Skip refresh delete: invalid or non-refresh token");
         }
+        log.info("Logout completed");
     }
 }
