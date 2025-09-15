@@ -142,4 +142,11 @@ public class JwtProvider {
             .getExpiration();
         return exp.getTime() - System.currentTimeMillis();
     }
+
+    public String getTokenId(String token) {
+        return Jwts.parser().verifyWith(secretKey).build()
+            .parseSignedClaims(token)
+            .getPayload()
+            .get("tid", String.class); // refresh 토큰에 들어있는 토큰 ID
+    }
 }

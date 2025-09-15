@@ -27,6 +27,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final RefreshTokenService refreshTokenService; // Redis Store
+    private final AccessTokenBlacklistService blacklistService;
 
     // 회원가입
     public SignUpResponse signUp(SignUpRequest req) {
@@ -82,5 +83,57 @@ public class AuthService {
     public LoginResponse login(LoginRequest req) {
         IssuedTokens t = loginIssueTokens(req);
         return new LoginResponse(t.accessToken(), t.accessExpiresInSec());
+    }
+
+    public IssuedTokens refresh(String refreshToken) {
+        // 1) 형식/서명/만료 검증 + refresh 타입 확인
+        if (!jwtProvider.validate(refreshToken) || !jwtProvider.isRefreshToken(refreshToken)) {
+            throw new CustomException(ErrorType.AUTH_TOKEN_INVALID);
+        }
+
+        Long userId = jwtProvider.getUserId(refreshToken);
+        String oldTid = jwtProvider.getTokenId(refreshToken);
+
+        // 2) Redis 에 실제 보관중인지 확인 (도난/재사용 방지)
+        String stored = refreshTokenService.get(userId, oldTid);
+        if (stored == null || !stored.equals(refreshToken)) {
+            throw new CustomException(ErrorType.AUTH_TOKEN_INVALID);
+        }
+
+        // 3) 새 Access 발급
+        User user = userRepository.findByIdAndStatus(userId, UserStatus.ACTIVE)
+            .orElseThrow(() -> new CustomException(ErrorType.USER_NOT_FOUND));
+
+        String newAccess = jwtProvider.generateAccessToken(user.getId(), user.getEmail());
+        long accessExpSec = jwtProvider.getRemainingMillis(newAccess) / 1000;
+
+        // 4) refresh 토큰 회전: 새 tid/refresh 발급 + Redis 교체
+        String newTid = jwtProvider.newTokenId();
+        String newRefresh = jwtProvider.generateRefreshToken(userId, newTid);
+        long refreshTtlSec = jwtProvider.getRemainingMillis(newRefresh) / 1000;
+
+        refreshTokenService.delete(userId, oldTid);
+        refreshTokenService.save(userId, newTid, newRefresh);
+
+        return new IssuedTokens(newAccess, accessExpSec, newRefresh, refreshTtlSec, newTid);
+    }
+
+    public void logout(String accessHeader, String refreshCookie) {
+        // 1) access 블랙리스트 등록
+        if (accessHeader != null && accessHeader.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            String at = accessHeader.substring(7).trim();
+            if (!at.isEmpty() && jwtProvider.validate(at)) {
+                long ttlMs = jwtProvider.getRemainingMillis(at);
+                blacklistService.blacklist(at, ttlMs);
+            }
+        }
+
+        // 2) refresh 삭제
+        if (refreshCookie != null && !refreshCookie.isBlank() && jwtProvider.validate(refreshCookie)
+            && jwtProvider.isRefreshToken(refreshCookie)) {
+            Long uid = jwtProvider.getUserId(refreshCookie);
+            String tid = jwtProvider.getTokenId(refreshCookie);
+            refreshTokenService.delete(uid, tid);
+        }
     }
 }
