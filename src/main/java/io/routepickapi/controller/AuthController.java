@@ -39,7 +39,10 @@ public class AuthController {
     @Operation(summary = "회원가입", description = "이메일/비밀번호/닉네임 회원가입")
     @PostMapping("/signup")
     public ResponseEntity<SignUpResponse> signUp(@Valid @RequestBody SignUpRequest req) {
+        log.debug("POST /auth/signup - request received (email={}, nickname={})", req.email(),
+            req.nickname());
         SignUpResponse res = authService.signUp(req);
+        log.info("User signed up: id={}, email={}", res.id(), res.email());
         return ResponseEntity.created(URI.create("/users/" + res.id())).body(res);
     }
 
@@ -56,8 +59,11 @@ public class AuthController {
 
     // 공통 로직 통합 (토큰응답 + 쿠키 헤더 세팅)
     private ResponseEntity<LoginResponse> okWithRefresh(IssuedTokens t) {
-        ResponseCookie cookie = buildRefreshCookie(t.refreshToken(), t.accessExpiresInSec());
+        ResponseCookie cookie = buildRefreshCookie(t.refreshToken(), t.refreshTtlSec());
         LoginResponse body = new LoginResponse(t.accessToken(), t.accessExpiresInSec());
+
+        log.debug("Set refresh cookie (name={}, maxAgeSec={})", REFRESH_COOKIE, t.refreshTtlSec());
+        log.debug("Respond with access token (expiresInSec={})", t.accessExpiresInSec());
         return ResponseEntity.ok()
             .header(HttpHeaders.SET_COOKIE, cookie.toString())
             .body(body);
@@ -66,7 +72,9 @@ public class AuthController {
     @Operation(summary = "로그인", description = "이메일/비밀번호 로그인 -> JWT 발급")
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest req) {
+        log.debug("POST /auth/login - request received (email={})", req.email());
         IssuedTokens tokens = authService.loginIssueTokens(req);
+        log.info("Login Success (email={})", req.email());
         return okWithRefresh(tokens);
     }
 
@@ -75,11 +83,15 @@ public class AuthController {
     public ResponseEntity<LoginResponse> refresh(
         @CookieValue(name = REFRESH_COOKIE, required = false) String refreshCookie
     ) {
+        log.debug("POST /auth/refresh - request received (hasCookie={})", refreshCookie != null);
         if (refreshCookie == null || refreshCookie.isBlank()) {
+            log.warn("Refresh failed: no refresh cookie");
             // refresh 쿠키 없음 -> 401
             throw new CustomException(ErrorType.AUTH_TOKEN_INVALID);
         }
         IssuedTokens tokens = authService.refresh(refreshCookie);
+        log.info("Refresh success (new access expSec={}, new refresh ttlSec={})",
+            tokens.accessExpiresInSec(), tokens.refreshTtlSec());
         return okWithRefresh(tokens);
     }
 
@@ -87,7 +99,10 @@ public class AuthController {
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(
         @CookieValue(name = REFRESH_COOKIE, required = false) String refreshCookie,
-        @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
+        @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        log.debug("POST /auth/logout - request received (hasAuthHeader={}, hasRefreshCookie={})",
+            authHeader != null, refreshCookie != null);
         authService.logout(authHeader, refreshCookie);
 
         ResponseCookie clear = ResponseCookie.from(REFRESH_COOKIE, "")
@@ -98,6 +113,7 @@ public class AuthController {
             .maxAge(Duration.ZERO)
             .build();
 
+        log.info("Logout success (Refresh cookie cleared)");
         return ResponseEntity.status(HttpStatus.NO_CONTENT)
             .header(HttpHeaders.SET_COOKIE, clear.toString())
             .build();
