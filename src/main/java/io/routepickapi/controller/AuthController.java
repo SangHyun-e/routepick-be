@@ -43,27 +43,31 @@ public class AuthController {
         return ResponseEntity.created(URI.create("/users/" + res.id())).body(res);
     }
 
+    // 공통 로직 통합 (refresh 쿠키 생성)
+    private ResponseCookie buildRefreshCookie(String value, long maxAgeSec) {
+        return ResponseCookie.from(REFRESH_COOKIE, value)
+            .httpOnly(true) // JS 접근 차단
+            .secure(false) // prod 는 true(HTTPS)로
+            .sameSite("Lax") // prod 에서 cross-site 필요하면 "None"
+            .path("/")
+            .maxAge(Duration.ofSeconds(maxAgeSec))
+            .build();
+    }
+
+    // 공통 로직 통합 (토큰응답 + 쿠키 헤더 세팅)
+    private ResponseEntity<LoginResponse> okWithRefresh(IssuedTokens t) {
+        ResponseCookie cookie = buildRefreshCookie(t.refreshToken(), t.accessExpiresInSec());
+        LoginResponse body = new LoginResponse(t.accessToken(), t.accessExpiresInSec());
+        return ResponseEntity.ok()
+            .header(HttpHeaders.SET_COOKIE, cookie.toString())
+            .body(body);
+    }
+
     @Operation(summary = "로그인", description = "이메일/비밀번호 로그인 -> JWT 발급")
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest req) {
-        // 1) 서비스에서 토큰들 발급 + Redis 저장
         IssuedTokens tokens = authService.loginIssueTokens(req);
-
-        // 2) refresh 토큰을 httpOnly 쿠키로 설정
-        ResponseCookie responseCookie = ResponseCookie.from(REFRESH_COOKIE, tokens.refreshToken())
-            .httpOnly(true)
-            .secure(false)
-            .sameSite("Lax")
-            .path("/")
-            .maxAge(Duration.ofSeconds(tokens.refreshTtlSec()))
-            .build();
-
-        // 3) 바디에는 access 토큰만
-        LoginResponse body = new LoginResponse(tokens.accessToken(), tokens.accessExpiresInSec());
-
-        return ResponseEntity.ok()
-            .header(HttpHeaders.SET_COOKIE, responseCookie.toString())
-            .body(body);
+        return okWithRefresh(tokens);
     }
 
     @Operation(summary = "토큰 재발급", description = "HttpOnly 쿠키의 refresh 토큰으로 access 토큰 재발급")
@@ -76,20 +80,7 @@ public class AuthController {
             throw new CustomException(ErrorType.AUTH_TOKEN_INVALID);
         }
         IssuedTokens tokens = authService.refresh(refreshCookie);
-
-        // 새 refresh 를 쿠키로 교체
-        ResponseCookie cookie = ResponseCookie.from(REFRESH_COOKIE, tokens.refreshToken())
-            .httpOnly(true)
-            .secure(false)
-            .sameSite("Lax")
-            .path("/")
-            .maxAge(Duration.ofSeconds(tokens.refreshTtlSec()))
-            .build();
-
-        LoginResponse body = new LoginResponse(tokens.accessToken(), tokens.accessExpiresInSec());
-        return ResponseEntity.ok()
-            .header(HttpHeaders.SET_COOKIE, cookie.toString())
-            .body(body);
+        return okWithRefresh(tokens);
     }
 
     @Operation(summary = "로그아웃", description = "access 블랙리스트 등록 + refresh 제거 + 쿠키 제거")
