@@ -6,6 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class AccessTokenBlacklistService {
 
     private static final HexFormat HEX = HexFormat.of(); // 소문자 hex(기본)
@@ -31,12 +33,14 @@ public class AccessTokenBlacklistService {
 
     public void blacklist(String accessToken, long ttlMillis) {
         if (ttlMillis <= 0L) {
+            log.debug("Blacklist skipped (ttl<=0)");
             return;
         }
 
         String tokenHash = sha256Hex(accessToken);
         Duration ttl = Duration.ofMillis(ttlMillis);
         redis.opsForValue().set(key(tokenHash), "1", ttl);
+        log.info("Blacklisted access token: key={}, ttlMs={}", key(tokenHash), ttlMillis);
     }
 
     public boolean isBlacklisted(String accessToken) {

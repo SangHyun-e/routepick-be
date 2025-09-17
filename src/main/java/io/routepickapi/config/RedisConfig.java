@@ -1,6 +1,8 @@
 package io.routepickapi.config;
 
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.data.redis.RedisProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,6 +16,7 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 @Configuration
 @RequiredArgsConstructor
+@Slf4j
 public class RedisConfig {
 
     private final RedisProperties redisProps;
@@ -51,5 +54,11 @@ public class RedisConfig {
         template.setHashValueSerializer(json);
         template.afterPropertiesSet();
         return template;
+    }
+
+    @PostConstruct
+    public void logRedisConn() {
+        log.info("Redis connect -> {}:{}, timeout={}", redisProps.getHost(), redisProps.getPort(),
+            redisProps.getTimeout());
     }
 }
