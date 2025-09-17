@@ -165,4 +165,26 @@ public class AuthService {
         }
         log.info("Logout completed");
     }
+
+    public void logoutAll(String accessHeader, long userId) {
+        boolean hasAccess =
+            accessHeader != null && accessHeader.regionMatches(true, 0, "Bearer ", 0, 7);
+        log.debug("Logout ALL requested (userId={}, hasAccessHeader={})", userId, hasAccess);
+
+        // 1) access 블랙리스트
+        if (hasAccess) {
+            String at = accessHeader.substring(7).trim();
+            if (!at.isEmpty() && jwtProvider.validate(at)) {
+                long ttlMs = jwtProvider.getRemainingMillis(at);
+                blacklistService.blacklist(at, ttlMs);
+                log.info("Access token blacklisted for logout-all (ttlMs={})", ttlMs);
+            } else {
+                log.debug("Skip blacklist in logout-all: invalid/empty access");
+            }
+        }
+
+        // 2) 해당 유저의 모든 refresh 폐기
+        refreshTokenService.deleteAllForUser(userId);
+        log.info("All refresh tokens deleted (userId={})", userId);
+    }
 }
