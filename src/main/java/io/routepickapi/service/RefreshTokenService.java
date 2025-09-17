@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class RefreshTokenService {
 
     private final StringRedisTemplate redis;
@@ -33,8 +35,10 @@ public class RefreshTokenService {
     // 저장 rt:{userId}:{tokenId} = token (TTL 부여) + 인덱스 세트에 tokenId 추가
     public void save(long userId, String tokenId, String refreshToken) {
         Duration ttl = Duration.ofSeconds(jwtProps.getRefreshTtlSeconds());
+        String k = key(userId, tokenId);
         redis.opsForValue().set(key(userId, tokenId), refreshToken, ttl);
         redis.opsForSet().add(indexKey(userId), tokenId);
+        log.info("RT Save -> key={}, ttlSec={}", k, ttl.toSeconds());
     }
 
     // 단건 조회(검증용)

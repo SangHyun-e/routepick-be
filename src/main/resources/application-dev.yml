@@ -10,7 +10,7 @@ spring:
       ddl-auto: validate # 스키마는 Flyway가 책임지고, JPA는 검증만.
     open-in-view: false
     properties:
-      hibernate.hibernate.format_sql: true
+      hibernate.format_sql: true
 
   data:
     redis:
