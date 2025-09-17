@@ -7,6 +7,7 @@ import io.routepickapi.dto.auth.LoginRequest;
 import io.routepickapi.dto.auth.LoginResponse;
 import io.routepickapi.dto.auth.SignUpRequest;
 import io.routepickapi.dto.auth.SignUpResponse;
+import io.routepickapi.security.AuthUser;
 import io.routepickapi.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -18,6 +19,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,16 +38,6 @@ public class AuthController {
 
     private static final String REFRESH_COOKIE = "RP_REFRESH"; // 쿠키 이름 (고정)
     private final AuthService authService;
-
-    @Operation(summary = "회원가입", description = "이메일/비밀번호/닉네임 회원가입")
-    @PostMapping("/signup")
-    public ResponseEntity<SignUpResponse> signUp(@Valid @RequestBody SignUpRequest req) {
-        log.debug("POST /auth/signup - request received (email={}, nickname={})", req.email(),
-            req.nickname());
-        SignUpResponse res = authService.signUp(req);
-        log.info("User signed up: id={}, email={}", res.id(), res.email());
-        return ResponseEntity.created(URI.create("/users/" + res.id())).body(res);
-    }
 
     // 공통 로직 통합 (refresh 쿠키 생성)
     private ResponseCookie buildRefreshCookie(String value, long maxAgeSec) {
@@ -67,6 +60,27 @@ public class AuthController {
         return ResponseEntity.ok()
             .header(HttpHeaders.SET_COOKIE, cookie.toString())
             .body(body);
+    }
+
+    // 쿠키 삭제 로직
+    private ResponseCookie clearRefreshCookie() {
+        return ResponseCookie.from(REFRESH_COOKIE, "")
+            .httpOnly(true)
+            .secure(false)
+            .sameSite("Lax")
+            .path("/")
+            .maxAge(Duration.ZERO)
+            .build();
+    }
+
+    @Operation(summary = "회원가입", description = "이메일/비밀번호/닉네임 회원가입")
+    @PostMapping("/signup")
+    public ResponseEntity<SignUpResponse> signUp(@Valid @RequestBody SignUpRequest req) {
+        log.debug("POST /auth/signup - request received (email={}, nickname={})", req.email(),
+            req.nickname());
+        SignUpResponse res = authService.signUp(req);
+        log.info("User signed up: id={}, email={}", res.id(), res.email());
+        return ResponseEntity.created(URI.create("/users/" + res.id())).body(res);
     }
 
     @Operation(summary = "로그인", description = "이메일/비밀번호 로그인 -> JWT 발급")
@@ -114,6 +128,25 @@ public class AuthController {
             .build();
 
         log.info("Logout success (Refresh cookie cleared)");
+        return ResponseEntity.status(HttpStatus.NO_CONTENT)
+            .header(HttpHeaders.SET_COOKIE, clear.toString())
+            .build();
+    }
+
+    @Operation(summary = "모든 기기에서 로그아웃", description = "현재 access 블랙리스트 + 사용자 모든 refresh 토큰 폐기 + 쿠키 삭제")
+    @PreAuthorize("isAuthenticated()")
+    @PostMapping("/logout-all")
+    public ResponseEntity<Void> logoutAll(
+        @AuthenticationPrincipal AuthUser me,
+        @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        log.debug("POST /auth/logout-all - request received (userId={}, hasAuthHeader={})", me.id(),
+            authHeader != null);
+
+        authService.logoutAll(authHeader, me.id());
+
+        ResponseCookie clear = clearRefreshCookie();
+        log.info("Logout-all success (userId={}, refresh cookie cleared)", me.id());
         return ResponseEntity.status(HttpStatus.NO_CONTENT)
             .header(HttpHeaders.SET_COOKIE, clear.toString())
             .build();
