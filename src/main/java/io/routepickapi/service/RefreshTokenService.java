@@ -61,4 +61,14 @@ public class RefreshTokenService {
         }
         redis.delete(indexKey(userId));
     }
+
+    // 유저의 refresh 토큰 ID 목록(rtidx:{userId} 세트 멤버들)
+    public Set<String> tokenIds(long userId) {
+        return redis.opsForSet().members(indexKey(userId));
+    }
+
+    // 인덱스 세트에서 특정 tokenId 제거(실제 값 키가 사라졌을 때 청소용)
+    public void removeIndex(long userId, String tokenId) {
+        redis.opsForSet().remove(indexKey(userId), tokenId);
+    }
 }

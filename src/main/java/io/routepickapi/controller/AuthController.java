@@ -5,14 +5,17 @@ import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.IssuedTokens;
 import io.routepickapi.dto.auth.LoginRequest;
 import io.routepickapi.dto.auth.LoginResponse;
+import io.routepickapi.dto.auth.SessionInfoResponse;
 import io.routepickapi.dto.auth.SignUpRequest;
 import io.routepickapi.dto.auth.SignUpResponse;
 import io.routepickapi.security.AuthUser;
 import io.routepickapi.service.AuthService;
+import io.routepickapi.service.SessionService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.time.Duration;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -23,6 +26,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -38,6 +44,7 @@ public class AuthController {
 
     private static final String REFRESH_COOKIE = "RP_REFRESH"; // 쿠키 이름 (고정)
     private final AuthService authService;
+    private final SessionService sessionService;
 
     // 공통 로직 통합 (refresh 쿠키 생성)
     private ResponseCookie buildRefreshCookie(String value, long maxAgeSec) {
@@ -150,5 +157,30 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.NO_CONTENT)
             .header(HttpHeaders.SET_COOKIE, clear.toString())
             .build();
+    }
+
+    @Operation(summary = "내 세션 목록", description = "현재 계정의 활성 refresh 세션 목록을 최신순으로 반환")
+    @PreAuthorize("isAuthenticated()")
+    @GetMapping("/sessions/")
+    public ResponseEntity<List<SessionInfoResponse>> listSessions(
+        @AuthenticationPrincipal AuthUser me
+    ) {
+        log.debug("GET /auth/sessions - userId={}", me.id());
+        List<SessionInfoResponse> res = sessionService.listSessions(me.id());
+        log.info("Sessions listed (userId={}, count={})", me.id(), res.size());
+        return ResponseEntity.ok(res);
+    }
+
+    @Operation(summary = "특정 세션 철회", description = "tid로 지정한 refresh 세션(다른기기 포함) 철회")
+    @PreAuthorize("isAuthenticated()")
+    @DeleteMapping("/sessions/{tid}")
+    public ResponseEntity<Void> revokeSession(
+        @AuthenticationPrincipal AuthUser me,
+        @PathVariable("tid") String tid
+    ) {
+        log.debug("DELETE /auth/sessions/{tid} - userId={}, tid={}", me.id(), tid);
+        sessionService.revokeSession(me.id(), tid);
+        log.info("Session revoke success (userId={}, tid={})", me.id(), tid);
+        return ResponseEntity.noContent().build();
     }
 }

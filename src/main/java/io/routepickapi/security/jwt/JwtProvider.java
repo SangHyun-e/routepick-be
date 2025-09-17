@@ -149,4 +149,20 @@ public class JwtProvider {
             .getPayload()
             .get("tid", String.class); // refresh 토큰에 들어있는 토큰 ID
     }
+
+    // 토큰에서 iat(발급시각) 반환
+    public Date getIssuedAt(String token) {
+        return Jwts.parser().verifyWith(secretKey).build()
+            .parseSignedClaims(token)
+            .getPayload()
+            .getIssuedAt();
+    }
+
+    // 토큰에서 exp(만료시각) 반환
+    public Date getExpiration(String token) {
+        return Jwts.parser().verifyWith(secretKey).build()
+            .parseSignedClaims(token)
+            .getPayload()
+            .getExpiration();
+    }
 }
