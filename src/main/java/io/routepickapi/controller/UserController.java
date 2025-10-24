@@ -36,7 +36,7 @@ public class UserController {
         if (currentUser == null) {
             throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
         }
-        log.debug("GET /users/me - userId={}", currentUser.id());
+        log.info("GET /users/me - userId={}", currentUser.id());
         return userService.getMe(currentUser.id());
     }
 }

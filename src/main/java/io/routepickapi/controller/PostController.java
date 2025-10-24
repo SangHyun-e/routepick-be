@@ -72,7 +72,7 @@ public class PostController {
 
     // 게시글 상세 조회 API
     @Operation(summary = "게시글 상세 조회", description = "기본적으로 조회수 +1, incView=false로 비활성화 가능")
-    @GetMapping("/{id}")
+    @GetMapping("/{id:\\d+}")
     public PostResponse detail(
         @Parameter(description = "게시글 ID")
         @PathVariable(name = "id") @Min(1) Long id,
@@ -85,7 +85,7 @@ public class PostController {
 
     // 좋아요+1 API
     @Operation(summary = "좋아요 +1", description = "현재 누적 좋아요 수를 반환")
-    @PostMapping("/{id}/like")
+    @PostMapping("/{id:\\d+}/like")
     public LikeResponse like(
         @Parameter(description = "게시글 ID")
         @PathVariable(name = "id") @Min(1) Long id) {
@@ -96,7 +96,7 @@ public class PostController {
 
     // 소프트 삭제
     @Operation(summary = "게시글 소프트 삭제", description = "status=DELETED로 변환(물리삭제 X)")
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{id:\\d+}")
     public ResponseEntity<Void> softDelete(
         @Parameter(description = "게시글 ID")
         @PathVariable(name = "id") @Min(1) Long id) {
@@ -107,7 +107,7 @@ public class PostController {
 
     // 게시글 활성화
     @Operation(summary = "게시글 활성화", description = "status=ACTIVE로 전환")
-    @PatchMapping("/{id}/activate")
+    @PatchMapping("/{id:\\d+}/activate")
     public ApiMessage activate(
         @Parameter(description = "게시글 ID")
         @PathVariable(name = "id") @Min(1) Long id) {
@@ -138,7 +138,7 @@ public class PostController {
         return postService.search(region, keyword, pageable);
     }
 
-    @PatchMapping("/{id}")
+    @PatchMapping("/{id:\\d+}")
     @Operation(summary = "게시글 수정", description = "전달된 필드만 변경하고, 수정된 게시글 200 반환")
     public ResponseEntity<PostResponse> update(
         @Parameter(description = "게시글 ID") @PathVariable(name = "id") @Min(1) Long id,

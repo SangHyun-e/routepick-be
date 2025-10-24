@@ -34,10 +34,13 @@ springdoc:
 jwt:
   secret: ${JWT_SECRET}
   access-ttl-seconds: 3600
-  refresh-ttl-seconds: 1209600 # 14일
+  refresh-ttl-seconds: 1209600 # 14일 1209600
   issuer: routepick
 
 logging:
   level:
+    root: INFO
+    io.routepickapi: DEBUG
+    org.springframework: INFO
     org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: ERROR
 

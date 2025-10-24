@@ -38,6 +38,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final AccessTokenBlacklistService blacklistService;
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getServletPath();
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
+
+        if (path.startsWith("/auth/")) {
+            return true;
+        }
+        if (path.startsWith("/v3/api-docs")) {
+            return true;
+        }
+        if (path.startsWith("/swagger-ui")) {
+            return true;
+        }
+        return false;
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
         FilterChain filterChain) throws ServletException, IOException {
 
@@ -52,6 +71,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 2) 토큰 추출
         String token = auth.substring(7).trim();
         if (token.isEmpty()) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // 2-1) 빈값/쓰레기값 및 형식 가드 ('.' 2개여야 JWS)
+        if ("undefined".equalsIgnoreCase(token) || "null".equalsIgnoreCase(token)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+        long dotCount = token.chars().filter(ch -> ch == '.').count();
+        if (dotCount != 2) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -90,4 +120,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
         filterChain.doFilter(request, response);
     }
+
+
 }
