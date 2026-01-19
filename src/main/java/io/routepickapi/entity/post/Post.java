@@ -139,4 +139,10 @@ public class Post extends BaseEntity {
     public void increaseLike() {
         this.likeCount++;
     }
+
+    public void decreaseLike() {
+        if (this.likeCount > 0) {
+            this.likeCount--;
+        }
+    }
 }

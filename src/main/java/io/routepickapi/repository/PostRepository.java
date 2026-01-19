@@ -29,11 +29,20 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     // 상태까지 같이 확인하는 단건 조회(상세에서 숨김/삭제 걸러낼 떄)
     Optional<Post> findByIdAndStatus(Long id, PostStatus status);
 
-    // 동시성 안전 증가
+    // 좋아요 +1 (동시성 안전)
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("update Post p set p.likeCount = p.likeCount + 1 "
-        + "where p.id = :id and p.status = :status")
+    @Query("update Post p set p.likeCount = p.likeCount + 1 where p.id = :id and p.status = :status")
     int incrementLikeCount(@Param("id") Long id, @Param("status") PostStatus status);
+
+    // 좋아요 -1 (0 미만 방지)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+        update Post p
+           set p.likeCount = case when p.likeCount > 0 then p.likeCount - 1 else 0 end
+         where p.id = :id
+           and p.status = :status
+        """)
+    int decrementLikeCount(@Param("id") Long id, @Param("status") PostStatus status);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Post p set p.viewCount = p.viewCount + 1 "
@@ -42,4 +51,8 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     // 작성자(owner)인지 여부를 PK로 판단
     boolean existsByIdAndAuthorId(Long id, Long authorId);
+
+    // 토글 응답에서 최신 likeCount 반환용
+    @Query("select p.likeCount from Post p where p.id = :id")
+    Optional<Integer> findLikeCountById(@Param("id") Long id);
 }

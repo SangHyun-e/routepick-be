@@ -2,17 +2,24 @@ package io.routepickapi.service;
 
 import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
+import io.routepickapi.controller.PostController.LikeResponse;
 import io.routepickapi.dto.post.PostCreateRequest;
 import io.routepickapi.dto.post.PostListItemResponse;
 import io.routepickapi.dto.post.PostResponse;
 import io.routepickapi.dto.post.PostUpdateRequest;
 import io.routepickapi.entity.post.Post;
+import io.routepickapi.entity.post.PostLike;
 import io.routepickapi.entity.post.PostStatus;
 import io.routepickapi.entity.user.User;
 import io.routepickapi.entity.user.UserStatus;
+import io.routepickapi.repository.PostLikeRepository;
 import io.routepickapi.repository.PostQueryRepository;
 import io.routepickapi.repository.PostRepository;
 import io.routepickapi.repository.UserRepository;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -30,44 +37,64 @@ public class PostService {
     private final PostRepository postRepository;
     private final PostQueryRepository postQueryRepository; // 동적 검색용 QueryDSL 리포지토리
     private final UserRepository userRepository;
+    private final PostLikeRepository postLikeRepository;
 
-    public Long create(PostCreateRequest req, Long currentUserId) {
+    public PostResponse create(PostCreateRequest req, Long currentUserId) {
         Post post = new Post(req.title(), req.content());
+
+        // 좌표는 둘 중 하나라도 있으면 setCoordinates
         if (req.latitude() != null || req.longitude() != null) {
             post.setCoordinates(req.latitude(), req.longitude());
         }
 
+        // region: null/blank 면 저장하지 않음 (=null 유지)
         if (req.region() != null && !req.region().isBlank()) {
             post.setRegion(req.region());
         }
+
         post.setTags(req.tags());
 
-        if (currentUserId != null) {
-            User author = userRepository.findByIdAndStatus(currentUserId, UserStatus.ACTIVE)
-                .orElseThrow(
-                    () -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
-            post.setAuthor(author);
-        }
+        // 작성자 지정 (인증 필요)
+        User author = userRepository.findByIdAndStatus(currentUserId, UserStatus.ACTIVE)
+            .orElseThrow(() -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
+        post.setAuthor(author);
 
-        Long id = postRepository.save(post).getId();
-        log.info("Create Post: id={}, title='{}', region='{}', authorId={}", id, post.getTitle(),
-            post.getRegion(), (post.getAuthor() != null ? post.getAuthor().getId() : null));
-        return id;
+        Post saved = postRepository.save(post);
+        log.info("Create Post: id={}, title='{}', region='{}', authorId={}",
+            saved.getId(), saved.getTitle(), saved.getRegion(), author.getId());
+
+        // 생성 직후에는 좋아요 false
+        return PostResponse.from(saved, false);
     }
 
     @Transactional(readOnly = true)
-    public Page<PostListItemResponse> list(String region, Pageable pageable) {
+    public Page<PostListItemResponse> list(String region, Pageable pageable, Long currentUserId) {
+        Page<Post> posts;
         if (region == null || region.isBlank()) {
-            return postRepository
-                .findByStatusOrderByCreatedAtDesc(PostStatus.ACTIVE, pageable)
-                .map(PostListItemResponse::from);
+            posts = postQueryRepository.searchByRegionAndKeyword(null, null, pageable);
+        } else {
+            posts = postRepository.findByRegionAndStatusOrderByCreatedAtDesc(region,
+                PostStatus.ACTIVE, pageable);
         }
-        return postRepository
-            .findByRegionAndStatusOrderByCreatedAtDesc(region, PostStatus.ACTIVE, pageable)
-            .map(PostListItemResponse::from);
+
+        // 비로그인 사용자
+        if (currentUserId == null) {
+            return posts.map(PostListItemResponse::from);
+        }
+
+        // 로그인 사용자 - 좋아요 상태 일괄 조회 (N+1 방지)
+        List<Long> postIds = posts.getContent().stream()
+            .map(Post::getId)
+            .toList();
+        Set<Long> likedPostIds = postLikeRepository.findLikedPostIdsByUserIdAndPostIds(postIds,
+            currentUserId);
+
+        return posts.map(post ->
+            PostListItemResponse.from(post, likedPostIds.contains(post.getId()))
+        );
     }
 
-    public PostResponse getDetail(Long id, boolean increaseView) {
+    public PostResponse getDetail(Long id, boolean increaseView, Long currentUserId) {
         // 1) 존재/상태 확인 + 태그 fetch join
         Post post = postRepository.findWithTagsById(id)
             .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
@@ -87,61 +114,34 @@ public class PostService {
             post.increaseView();
             log.debug("Increase View (atomic): id={}, newViewCount={}", id, post.getViewCount());
         }
-        return PostResponse.from(post);
+        boolean isLiked =
+            (currentUserId != null) && postLikeRepository.existsByPostIdAndUserId(post.getId(),
+                currentUserId);
+        return PostResponse.from(post, isLiked);
     }
 
-    public int like(Long id) {
-        log.debug("POST /posts/{}/like - request received", id);
-        // DB 에서 원자적으로 +1
-        int updated = postRepository.incrementLikeCount(id, PostStatus.ACTIVE);
-        if (updated == 0) {
-            throw new CustomException(ErrorType.POST_NOT_FOUND);
+    @Transactional(readOnly = true)
+    public Page<PostListItemResponse> search(String region, String keyword, Pageable pageable,
+        Long currentUserId) {
+        Page<Post> page = postQueryRepository.searchByRegionAndKeyword(region, keyword, pageable);
+
+        if (currentUserId == null) {
+            return page.map(PostListItemResponse::from);
         }
 
-        // 최신 값을 정확히 반환하려면 재조회해서 꺼내는게 안전(동시성 고려)
-        int likeCount = postRepository.findByIdAndStatus(id, PostStatus.ACTIVE)
-            .map(Post::getLikeCount)
-            .orElseThrow(() -> {
-                log.error("Like increased but reload failed (id={})", id);
-                return new CustomException(ErrorType.POST_NOT_FOUND);
-            });
-        log.info("Post liked: id={}, likeCount={}", id, likeCount);
-        return likeCount;
+        List<Long> postIds = page.getContent().stream()
+            .map(Post::getId)
+            .toList();
+
+        Set<Long> likedPostIds = postLikeRepository.findLikedPostIdsByUserIdAndPostIds(postIds,
+            currentUserId);
+
+        return page.map(
+            post -> PostListItemResponse.from(post, likedPostIds.contains(post.getId())));
     }
 
     @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
-    public void softDelete(Long id) {
-        Post post = postRepository.findById(id)
-            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
-        post.softDelete();
-        log.info("Soft Delete: id={}", id);
-    }
-
-    @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
-    public void activate(Long id) {
-        Post post = postRepository.findById(id)
-            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
-        post.activated();
-        log.info("Activate: id={}", id);
-    }
-
-    /**
-     * 검색 서비스
-     * - region(선택): 지역명 완전일치 필터
-     * - keyword(선택): 제목/내용 부분일치(대소문자 무시)
-     * - pageable: 페이지/정렬(기본 createdAt DESC)
-     * - 반환: 목록 화면용 경량 DTO(page)
-     */
-    @Transactional(readOnly = true)
-    public Page<PostListItemResponse> search(String region, String keyword, Pageable pageable) {
-        Page<Post> page = postQueryRepository.searchByRegionAndKeyword(region, keyword, pageable);
-        // 목록 응답은 Lazy 컬렉션(tags) 접근하지 않는 경량 DTO로 매핑 -> Lazy 예외 예방
-        return page.map(PostListItemResponse::from);
-    }
-
-    @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
-    public PostResponse update(Long id, PostUpdateRequest req) {
-        // DELETED 는 수정 불가, ACTIVE/HIDDEN 은 수정 허용
+    public PostResponse update(Long id, PostUpdateRequest req, Long currentUserId) {
         Post post = postRepository.findById(id)
             .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
 
@@ -149,27 +149,102 @@ public class PostService {
             throw new CustomException(ErrorType.POST_NOT_FOUND);
         }
 
-        // 전달된 필드만 변경 (null은 무시)
         if (req.title() != null) {
             post.changeTitle(req.title());
         }
         if (req.content() != null) {
             post.changeContent(req.content());
         }
+
+        // region: null이면 "삭제 의도"로 보고 null 세팅(네가 이전에 그렇게 바꿔놨던 정책 유지)
         if (req.region() != null) {
             post.setRegion(req.region());
+        } else {
+            post.setRegion(null);
         }
 
-        if (req.latitude() != null && req.longitude() != null) {
+        // 좌표: 둘 다 null이면 좌표 삭제, 둘 다 있으면 설정
+        if (req.latitude() == null && req.longitude() == null) {
+            post.setCoordinates(null, null);
+        } else if (req.latitude() != null && req.longitude() != null) {
             post.setCoordinates(req.latitude(), req.longitude());
         }
+
+        // tags: null이면 전체 삭제(빈 배열), 값 있으면 setTags
         if (req.tags() != null) {
             post.setTags(req.tags());
+        } else {
+            post.setTags(new ArrayList<>());
         }
 
-        log.info("Post Updated: id={}", id);
+        boolean isLiked =
+            (currentUserId != null) && postLikeRepository.existsByPostIdAndUserId(post.getId(),
+                currentUserId);
+        return PostResponse.from(post, isLiked);
+    }
 
-        // 수정된 최신 본문 반환
-        return PostResponse.from(post);
+    @PreAuthorize("isAuthenticated()")
+    public LikeResponse toggleLike(Long postId, Long userId) {
+
+        log.info("[LIKE] toggle start - postId={}, userId={}", postId, userId);
+
+        // post 상태 체크(삭제/숨김 정책은 니 룰에 맞춰 조정 가능)
+        Post post = postRepository.findById(postId)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+
+        if (post.getStatus() != PostStatus.ACTIVE) {
+            throw new CustomException(ErrorType.POST_NOT_FOUND);
+        }
+
+        // user 존재/상태 체크
+        User user = userRepository.findByIdAndStatus(userId, UserStatus.ACTIVE)
+            .orElseThrow(() -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
+
+        Optional<PostLike> existingLike = postLikeRepository.findByPostIdAndUserId(postId, userId);
+
+        if (existingLike.isPresent()) {
+            // 좋아요 취소
+            postLikeRepository.delete(existingLike.get());
+            postRepository.decrementLikeCount(postId, PostStatus.ACTIVE);
+
+            int likeCount = postRepository.findLikeCountById(postId)
+                .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+
+            log.info(
+                "[LIKE] removed - postId={}, userId={}, likeCount={}",
+                postId, userId, likeCount
+            );
+
+            return new LikeResponse(likeCount);
+        }
+
+        // 좋아요 추가
+        PostLike newLike = new PostLike(post, user);
+        postLikeRepository.save(newLike);
+        postRepository.incrementLikeCount(postId, PostStatus.ACTIVE);
+
+        int likeCount = postRepository.findLikeCountById(postId)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+
+        log.info(
+            "[LIKE] added - postId={}, userId={}, likeCount={}",
+            postId, userId, likeCount
+        );
+
+        return new LikeResponse(likeCount);
+    }
+
+    @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
+    public void softDelete(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        post.softDelete();
+    }
+
+    @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
+    public void activate(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        post.activated();
     }
 }

@@ -14,7 +14,8 @@ public record PostListItemResponse(
     int viewCount,
     LocalDateTime createdAt,
     Long authorId,
-    String authorNickname
+    String authorNickname,
+    Boolean isLikedByCurrentUser
 ) {
 
     public static PostListItemResponse from(Post p) {
@@ -28,7 +29,24 @@ public record PostListItemResponse(
             p.getViewCount(),
             p.getCreatedAt(),
             a != null ? a.getId() : null,
-            a != null ? a.getNickname() : null
+            a != null ? a.getNickname() : null,
+            null
+        );
+    }
+
+    public static PostListItemResponse from(Post p, boolean isLikedByCurrentUser) {
+        User a = p.getAuthor();
+        return new PostListItemResponse(
+            p.getId(),
+            p.getTitle(),
+            p.getRegion(),
+            p.getStatus(),
+            p.getLikeCount(),
+            p.getViewCount(),
+            p.getCreatedAt(),
+            a != null ? a.getId() : null,
+            a != null ? a.getNickname() : null,
+            isLikedByCurrentUser  // ← 실제 좋아요 상태
         );
     }
 }

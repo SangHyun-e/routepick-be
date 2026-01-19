@@ -23,12 +23,14 @@ public record PostResponse(
     String createdBy,
     String updatedBy,
     Long authorId,
-    String authorNickname
+    String authorNickname,
+    Boolean isLikedByCurrentUser
 ) {
 
     public static PostResponse from(Post p) {
         List<String> safeTags = new ArrayList<>(p.getTags());
         User a = p.getAuthor();
+
         return new PostResponse(
             p.getId(),
             p.getTitle(),
@@ -45,7 +47,33 @@ public record PostResponse(
             p.getCreatedBy(),
             p.getUpdatedBy(),
             a != null ? a.getId() : null,
-            a != null ? a.getNickname() : null
+            a != null ? a.getNickname() : null,
+            null
+        );
+    }
+
+    public static PostResponse from(Post p, boolean isLikedByCurrentUser) {
+        List<String> safeTags = new ArrayList<>(p.getTags());
+        User a = p.getAuthor();
+
+        return new PostResponse(
+            p.getId(),
+            p.getTitle(),
+            p.getContent(),
+            p.getLatitude(),
+            p.getLongitude(),
+            p.getRegion(),
+            safeTags,
+            p.getLikeCount(),
+            p.getViewCount(),
+            p.getStatus(),
+            p.getCreatedAt(),
+            p.getUpdatedAt(),
+            p.getCreatedBy(),
+            p.getUpdatedBy(),
+            a != null ? a.getId() : null,
+            a != null ? a.getNickname() : null,
+            isLikedByCurrentUser
         );
     }
 }
