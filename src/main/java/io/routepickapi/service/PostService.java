@@ -7,17 +7,20 @@ import io.routepickapi.dto.post.PostCreateRequest;
 import io.routepickapi.dto.post.PostListItemResponse;
 import io.routepickapi.dto.post.PostResponse;
 import io.routepickapi.dto.post.PostUpdateRequest;
+import io.routepickapi.entity.comment.CommentStatus;
 import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.post.PostLike;
 import io.routepickapi.entity.post.PostStatus;
 import io.routepickapi.entity.user.User;
 import io.routepickapi.entity.user.UserStatus;
+import io.routepickapi.repository.CommentQueryRepository;
 import io.routepickapi.repository.PostLikeRepository;
 import io.routepickapi.repository.PostQueryRepository;
 import io.routepickapi.repository.PostRepository;
 import io.routepickapi.repository.UserRepository;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +41,7 @@ public class PostService {
     private final PostQueryRepository postQueryRepository; // 동적 검색용 QueryDSL 리포지토리
     private final UserRepository userRepository;
     private final PostLikeRepository postLikeRepository;
+    private final CommentQueryRepository commentQueryRepository;
 
     public PostResponse create(PostCreateRequest req, Long currentUserId) {
         Post post = new Post(req.title(), req.content());
@@ -77,21 +81,32 @@ public class PostService {
                 PostStatus.ACTIVE, pageable);
         }
 
-        // 비로그인 사용자
-        if (currentUserId == null) {
-            return posts.map(PostListItemResponse::from);
-        }
-
-        // 로그인 사용자 - 좋아요 상태 일괄 조회 (N+1 방지)
+        // 현재 페이지의 postIds
         List<Long> postIds = posts.getContent().stream()
             .map(Post::getId)
             .toList();
+
+        // 댓글 수 집계 (ACTIVE만 카운트)
+        Map<Long, Integer> commentCountMap =
+            commentQueryRepository.countByPostIds(postIds, CommentStatus.ACTIVE);
+
+        // 비로그인 사용자
+        if (currentUserId == null) {
+            return posts.map(p -> {
+                int commentCount = commentCountMap.getOrDefault(p.getId(), 0);
+                return PostListItemResponse.from(p, commentCount);
+            });
+        }
+
+        // 로그인 사용자 - 좋아요 상태 일괄 조회 (N+1 방지)
         Set<Long> likedPostIds = postLikeRepository.findLikedPostIdsByUserIdAndPostIds(postIds,
             currentUserId);
 
-        return posts.map(post ->
-            PostListItemResponse.from(post, likedPostIds.contains(post.getId()))
-        );
+        return posts.map(p -> {
+            boolean liked = likedPostIds.contains(p.getId());
+            int commentCount = commentCountMap.getOrDefault(p.getId(), 0);
+            return PostListItemResponse.from(p, liked, commentCount);
+        });
     }
 
     public PostResponse getDetail(Long id, boolean increaseView, Long currentUserId) {
@@ -125,19 +140,26 @@ public class PostService {
         Long currentUserId) {
         Page<Post> page = postQueryRepository.searchByRegionAndKeyword(region, keyword, pageable);
 
-        if (currentUserId == null) {
-            return page.map(PostListItemResponse::from);
-        }
-
         List<Long> postIds = page.getContent().stream()
             .map(Post::getId)
             .toList();
 
+        Map<Long, Integer> commentCountMap =
+            commentQueryRepository.countByPostIds(postIds, CommentStatus.ACTIVE);
+
+        if (currentUserId == null) {
+            return page.map(
+                p -> PostListItemResponse.from(p, commentCountMap.getOrDefault(p.getId(), 0)));
+        }
+
         Set<Long> likedPostIds = postLikeRepository.findLikedPostIdsByUserIdAndPostIds(postIds,
             currentUserId);
 
-        return page.map(
-            post -> PostListItemResponse.from(post, likedPostIds.contains(post.getId())));
+        return page.map(p -> PostListItemResponse.from(
+            p,
+            likedPostIds.contains(p.getId()),
+            commentCountMap.getOrDefault(p.getId(), 0)
+        ));
     }
 
     @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")

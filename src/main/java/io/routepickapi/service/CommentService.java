@@ -3,14 +3,17 @@ package io.routepickapi.service;
 import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.comment.CommentCreateRequest;
+import io.routepickapi.dto.comment.CommentLikeToggleResponse;
 import io.routepickapi.dto.comment.CommentResponse;
 import io.routepickapi.dto.comment.CommentUpdateRequest;
 import io.routepickapi.entity.comment.Comment;
+import io.routepickapi.entity.comment.CommentLike;
 import io.routepickapi.entity.comment.CommentStatus;
 import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.post.PostStatus;
 import io.routepickapi.entity.user.User;
 import io.routepickapi.entity.user.UserStatus;
+import io.routepickapi.repository.CommentLikeRepository;
 import io.routepickapi.repository.CommentRepository;
 import io.routepickapi.repository.PostRepository;
 import io.routepickapi.repository.UserRepository;
@@ -19,6 +22,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,6 +38,7 @@ public class CommentService {
     private final CommentRepository commentRepository;
     private final PostRepository postRepository;
     private final UserRepository userRepository;
+    private final CommentLikeRepository commentLikeRepository;
 
     public Long createRoot(Long postId, Long currentUserId, CommentCreateRequest req) {
         Post post = postRepository.findByIdAndStatus(postId, PostStatus.ACTIVE)
@@ -126,31 +131,65 @@ public class CommentService {
     }
 
     @Transactional
-    public int like(Long postId, Long commentId) {
-        // 원자적 like_count + 1
-        log.debug("Request like: postId={}, commentId={}", postId, commentId);
-        int updated = commentRepository.incrementLikeCount(postId, commentId, CommentStatus.ACTIVE);
+    public CommentLikeToggleResponse toggleLike(Long postId, Long commentId, Long currentUserId) {
+        User user = userRepository.findByIdAndStatus(currentUserId, UserStatus.ACTIVE)
+            .orElseThrow(() -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
 
-        if (updated == 0) {
-            log.warn("Like failed: not found or inactive (postId={}, commentId={})", postId,
-                commentId);
-            throw new CustomException(ErrorType.COMMENT_NOT_FOUND);
-        }
+        Comment comment = commentRepository.findByIdAndPostIdAndStatus(
+                commentId, postId, CommentStatus.ACTIVE
+            )
+            .orElseThrow(() -> new CustomException(ErrorType.COMMENT_NOT_FOUND));
 
-        // 갱신된 카운트 조회해서 반환
-        int likeCount = commentRepository
-            .findByIdAndPostIdAndStatus(commentId, postId, CommentStatus.ACTIVE)
-            .map(Comment::getLikeCount)
-            .orElseThrow(
-                () -> {
-                    log.error("Like succeed but reload failed (postId={}, commentId={})", postId,
-                        commentId);
-                    return new CustomException(ErrorType.COMMENT_NOT_FOUND);
-                });
-        log.info("Like increased: postId={}, commentId={}, likeCount={}", postId, commentId,
-            likeCount);
-        return likeCount;
+        return commentLikeRepository.findByCommentAndUser(comment, user)
+            .map(existing -> {
+                // 좋아요 취소
+                commentLikeRepository.delete(existing);
+
+                int updated = commentRepository.decrementLikeCount(
+                    postId, commentId, CommentStatus.ACTIVE
+                );
+                if (updated == 0) {
+                    throw new CustomException(ErrorType.COMMENT_NOT_FOUND);
+                }
+
+                int likeCount = commentRepository
+                    .findByIdAndPostIdAndStatus(commentId, postId, CommentStatus.ACTIVE)
+                    .map(Comment::getLikeCount)
+                    .orElseThrow(() -> new CustomException(ErrorType.COMMENT_NOT_FOUND));
+
+                log.info("Comment like OFF: postId={}, commentId={}, userId={}, likeCount={}",
+                    postId, commentId, currentUserId, likeCount);
+
+                return new CommentLikeToggleResponse(commentId, likeCount, false);
+            })
+            .orElseGet(() -> {
+                // 좋아요 추가
+                try {
+                    commentLikeRepository.save(new CommentLike(comment, user));
+                } catch (DataIntegrityViolationException e) {
+                    log.warn("Duplicate like insert (race): postId={}, commentId-{}, userId={}",
+                        postId, commentId, currentUserId);
+                }
+
+                int updated = commentRepository.incrementLikeCount(
+                    postId, commentId, CommentStatus.ACTIVE
+                );
+                if (updated == 0) {
+                    throw new CustomException(ErrorType.COMMENT_NOT_FOUND);
+                }
+
+                int likeCount = commentRepository
+                    .findByIdAndPostIdAndStatus(commentId, postId, CommentStatus.ACTIVE)
+                    .map(Comment::getLikeCount)
+                    .orElseThrow(() -> new CustomException(ErrorType.COMMENT_NOT_FOUND));
+
+                log.info("Comment like ON: postId={}, commentId={}, userId={}, likeCount={}",
+                    postId, commentId, currentUserId, likeCount);
+
+                return new CommentLikeToggleResponse(commentId, likeCount, true);
+            });
     }
+
 
     @Transactional
     @PreAuthorize("@authz.isCommentOwner(#postId, #commentId) or hasRole('ADMIN')")

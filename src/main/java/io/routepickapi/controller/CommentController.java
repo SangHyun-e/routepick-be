@@ -1,6 +1,7 @@
 package io.routepickapi.controller;
 
 import io.routepickapi.dto.comment.CommentCreateRequest;
+import io.routepickapi.dto.comment.CommentLikeToggleResponse;
 import io.routepickapi.dto.comment.CommentResponse;
 import io.routepickapi.dto.comment.CommentUpdateRequest;
 import io.routepickapi.security.AuthUser;
@@ -17,6 +18,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -39,6 +41,7 @@ public class CommentController {
 
     @Operation(summary = "본 댓글 생성", description = "특정 게시글에 본댓글 생성")
     @PostMapping("/{postId}/comments")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<IdResponse> createRoot(
         @AuthenticationPrincipal AuthUser currentUser,
         @PathVariable(name = "postId") @Min(1) Long postId,
@@ -53,6 +56,7 @@ public class CommentController {
 
     @Operation(summary = "대댓글 생성", description = "특정 게시글 내 부모 댓글에 대댓글 생성")
     @PostMapping("/{postId}/comments/{parentId}/replies")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<IdResponse> createReply(
         @AuthenticationPrincipal AuthUser currentUser,
         @PathVariable(name = "postId") @Min(1) Long postId,
@@ -79,25 +83,28 @@ public class CommentController {
         return commentService.listRootsWithReplies(postId, pageable);
     }
 
-    @Operation(summary = "댓글 좋아요", description = "특정 게시글 내 댓글의 좋아요를 1 증가")
+    @Operation(summary = "댓글 좋아요 토글", description = "특정 게시글 내 댓글의 좋아요 추가/취소, 현재 좋아요 수 반환 (JWT 인증 필요)")
     @PostMapping("/{postId}/comments/{commentId}/like")
-    public ResponseEntity<LikeResponse> like(
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<CommentLikeToggleResponse> toggleLike(
+        @AuthenticationPrincipal AuthUser currentUser,
         @Parameter(description = "게시글 ID")
         @PathVariable @Min(1) Long postId,
         @Parameter(description = "댓글 ID")
         @PathVariable @Min(1) Long commentId
     ) {
-        log.debug("POST /posts/{}/comments/{}/like", postId, commentId);
+        CommentLikeToggleResponse res =
+            commentService.toggleLike(postId, commentId, currentUser.id());
 
-        int likeCount = commentService.like(postId, commentId);
+        log.info("Comment like toggled: postId={}. commentId={}, userId={}. liked={}, likeCount={}",
+            postId, commentId, currentUser.id(), res.liked(), res.likeCount());
 
-        log.info("Reply liked: postId={}, commentId={}, likeCount={}", postId, commentId,
-            likeCount);
-        return ResponseEntity.ok(new LikeResponse(commentId, likeCount));
+        return ResponseEntity.ok(res);
     }
 
     @Operation(summary = "댓글 삭제(소프트)", description = "특정 게시글 내 댓글을 소프트 삭제합니다.")
     @DeleteMapping("/{postId}/comments/{commentId}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> delete(
         @Parameter(description = "게시글 ID") @PathVariable @Min(1) Long postId,
         @Parameter(description = "댓글 ID") @PathVariable @Min(1) Long commentId
@@ -112,6 +119,7 @@ public class CommentController {
 
     @Operation(summary = "댓글 내용 수정", description = "ACTIVE 상태의 댓글 내용만 수정 가능")
     @PatchMapping("/{postId}/comments/{commentId}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<CommentResponse> update(
         @Parameter(description = "게시글 ID") @PathVariable @Min(1) Long postId,
         @Parameter(description = "댓글 ID") @PathVariable @Min(1) Long commentId,
@@ -128,8 +136,5 @@ public class CommentController {
     public record IdResponse(Long id) {
 
     }
-
-    public record LikeResponse(Long id, int likeCount) {
-
-    }
+    
 }

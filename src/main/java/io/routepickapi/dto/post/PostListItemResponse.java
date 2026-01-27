@@ -15,10 +15,12 @@ public record PostListItemResponse(
     LocalDateTime createdAt,
     Long authorId,
     String authorNickname,
-    Boolean isLikedByCurrentUser
+    Boolean isLikedByCurrentUser,
+    int commentCount
+
 ) {
 
-    public static PostListItemResponse from(Post p) {
+    public static PostListItemResponse from(Post p, int commentCount) {
         User a = p.getAuthor();
         return new PostListItemResponse(
             p.getId(),
@@ -30,11 +32,13 @@ public record PostListItemResponse(
             p.getCreatedAt(),
             a != null ? a.getId() : null,
             a != null ? a.getNickname() : null,
-            null
+            null,
+            commentCount
         );
     }
 
-    public static PostListItemResponse from(Post p, boolean isLikedByCurrentUser) {
+    public static PostListItemResponse from(Post p, boolean isLikedByCurrentUser,
+        int commentCount) {
         User a = p.getAuthor();
         return new PostListItemResponse(
             p.getId(),
@@ -46,7 +50,8 @@ public record PostListItemResponse(
             p.getCreatedAt(),
             a != null ? a.getId() : null,
             a != null ? a.getNickname() : null,
-            isLikedByCurrentUser  // ← 실제 좋아요 상태
+            isLikedByCurrentUser,  // ← 실제 좋아요 상태
+            commentCount
         );
     }
 }

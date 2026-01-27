@@ -14,8 +14,8 @@ import org.springframework.data.repository.query.Param;
  */
 public interface CommentRepository extends JpaRepository<Comment, Long>, CommentRepositoryCustom {
 
-
     // JPQL 로 like_count 증가
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Comment c "
         + "set c.likeCount = c.likeCount +1 "
@@ -23,6 +23,19 @@ public interface CommentRepository extends JpaRepository<Comment, Long>, Comment
         + "and c.post.id = :postId "
         + "and c.status = :status")
     int incrementLikeCount(
+        @Param("postId") Long postId,
+        @Param("commentId") Long commentId,
+        @Param("status") CommentStatus status);
+
+    // JPQL 로 like_count 감소
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Comment c "
+        + "set c.likeCount = c.likeCount -1 "
+        + "where c.id = :commentId "
+        + "and c.post.id = :postId "
+        + "and c.status = :status "
+        + "and c.likeCount > 0")
+    int decrementLikeCount(
         @Param("postId") Long postId,
         @Param("commentId") Long commentId,
         @Param("status") CommentStatus status);
