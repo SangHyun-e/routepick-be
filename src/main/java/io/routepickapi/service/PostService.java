@@ -132,7 +132,12 @@ public class PostService {
         boolean isLiked =
             (currentUserId != null) && postLikeRepository.existsByPostIdAndUserId(post.getId(),
                 currentUserId);
-        return PostResponse.from(post, isLiked);
+
+        Map<Long, Integer> commentCountMap = commentQueryRepository.countByPostIds(
+            List.of(post.getId()), CommentStatus.ACTIVE);
+        int commentCount = commentCountMap.getOrDefault(post.getId(), 0);
+        log.info("[DETAIL] postId={}, commentCount={}", post.getId(), commentCount);
+        return PostResponse.from(post, isLiked, commentCount);
     }
 
     @Transactional(readOnly = true)

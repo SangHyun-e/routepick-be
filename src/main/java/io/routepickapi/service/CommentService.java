@@ -115,7 +115,7 @@ public class CommentService {
         // 3) 대댓글 일괄 조회(작성시간 오름차순, QueryDSL 교체)
         List<Comment> replies = parentIds.isEmpty()
             ? List.of()
-            : commentRepository.findActiveReplies(parentIds);
+            : commentRepository.findRepliesForList(parentIds);
 
         // 4) parentId -> children 맵핑
         Map<Long, List<Comment>> childrenMap = replies.stream()

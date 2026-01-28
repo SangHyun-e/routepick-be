@@ -10,15 +10,15 @@ public interface CommentRepositoryCustom {
     /**
      * 루트 댓글 페이지:
      * - ACTIVE 는 항상 노출
-     * - DELETED 라도 ACTVIE 자식이 하나로 있으면 노출
+     * - DELETED 라도 자식(대댓글)이 하나라도 있으면 노출
      * - 최신순
      */
     Page<Comment> findRootsForList(Long postId, Pageable pageable);
 
     /**
      * 여러 부모의 대댓글 일괄 로딩:
-     * - ACTIVE 만
+     * - ACTIVE + DELETED (삭제된 대댓글도 마스킹 필요)
      * - 작성시간 오름차순
      */
-    List<Comment> findActiveReplies(List<Long> parentIds);
+    List<Comment> findRepliesForList(List<Long> parentIds);
 }

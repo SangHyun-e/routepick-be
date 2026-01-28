@@ -24,7 +24,8 @@ public record PostResponse(
     String updatedBy,
     Long authorId,
     String authorNickname,
-    Boolean isLikedByCurrentUser
+    Boolean isLikedByCurrentUser,
+    int commentCount
 ) {
 
     public static PostResponse from(Post p) {
@@ -48,7 +49,8 @@ public record PostResponse(
             p.getUpdatedBy(),
             a != null ? a.getId() : null,
             a != null ? a.getNickname() : null,
-            null
+            null,
+            0
         );
     }
 
@@ -73,7 +75,34 @@ public record PostResponse(
             p.getUpdatedBy(),
             a != null ? a.getId() : null,
             a != null ? a.getNickname() : null,
-            isLikedByCurrentUser
+            isLikedByCurrentUser,
+            0
+        );
+    }
+
+    public static PostResponse from(Post p, boolean isLikedByCurrentUser, int commentCount) {
+        List<String> safeTages = new ArrayList<>(p.getTags());
+        User a = p.getAuthor();
+
+        return new PostResponse(
+            p.getId(),
+            p.getTitle(),
+            p.getContent(),
+            p.getLatitude(),
+            p.getLongitude(),
+            p.getRegion(),
+            safeTages,
+            p.getLikeCount(),
+            p.getViewCount(),
+            p.getStatus(),
+            p.getCreatedAt(),
+            p.getUpdatedAt(),
+            p.getCreatedBy(),
+            p.getUpdatedBy(),
+            a != null ? a.getId() : null,
+            a != null ? a.getNickname() : null,
+            isLikedByCurrentUser,
+            commentCount
         );
     }
 }
