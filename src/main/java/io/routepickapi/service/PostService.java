@@ -3,10 +3,12 @@ package io.routepickapi.service;
 import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.controller.PostController.LikeResponse;
+import io.routepickapi.dto.comment.CommentResponse;
 import io.routepickapi.dto.post.PostCreateRequest;
 import io.routepickapi.dto.post.PostListItemResponse;
 import io.routepickapi.dto.post.PostResponse;
 import io.routepickapi.dto.post.PostUpdateRequest;
+import io.routepickapi.entity.comment.Comment;
 import io.routepickapi.entity.comment.CommentStatus;
 import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.post.PostLike;
@@ -14,6 +16,7 @@ import io.routepickapi.entity.post.PostStatus;
 import io.routepickapi.entity.user.User;
 import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.repository.CommentQueryRepository;
+import io.routepickapi.repository.CommentRepository;
 import io.routepickapi.repository.PostLikeRepository;
 import io.routepickapi.repository.PostQueryRepository;
 import io.routepickapi.repository.PostRepository;
@@ -42,6 +45,7 @@ public class PostService {
     private final UserRepository userRepository;
     private final PostLikeRepository postLikeRepository;
     private final CommentQueryRepository commentQueryRepository;
+    private final CommentRepository commentRepository;
 
     public PostResponse create(PostCreateRequest req, Long currentUserId) {
         Post post = new Post(req.title(), req.content());
@@ -133,11 +137,19 @@ public class PostService {
             (currentUserId != null) && postLikeRepository.existsByPostIdAndUserId(post.getId(),
                 currentUserId);
 
+        // 댓글 수: ACTIVE (루트+대댓글 포함)
         Map<Long, Integer> commentCountMap = commentQueryRepository.countByPostIds(
             List.of(post.getId()), CommentStatus.ACTIVE);
         int commentCount = commentCountMap.getOrDefault(post.getId(), 0);
-        log.info("[DETAIL] postId={}, commentCount={}", post.getId(), commentCount);
-        return PostResponse.from(post, isLiked, commentCount);
+
+        // 베스트 댓글: ACTIVE, 좋아요 2개이상, 상위 3개
+        List<Comment> best = commentRepository.findBestComments(post.getId(), 2, 3);
+        List<CommentResponse> bestDtos = best.stream()
+            .map(CommentResponse::from)
+            .toList();
+        log.info("[DETAIL] postId={}, commentCount={}, bestCount={}", post.getId(), commentCount,
+            bestDtos.size());
+        return PostResponse.from(post, isLiked, commentCount, bestDtos);
     }
 
     @Transactional(readOnly = true)

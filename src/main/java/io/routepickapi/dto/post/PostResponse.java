@@ -1,5 +1,6 @@
 package io.routepickapi.dto.post;
 
+import io.routepickapi.dto.comment.CommentResponse;
 import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.post.PostStatus;
 import io.routepickapi.entity.user.User;
@@ -25,7 +26,8 @@ public record PostResponse(
     Long authorId,
     String authorNickname,
     Boolean isLikedByCurrentUser,
-    int commentCount
+    int commentCount,
+    List<CommentResponse> bestComments
 ) {
 
     public static PostResponse from(Post p) {
@@ -50,7 +52,8 @@ public record PostResponse(
             a != null ? a.getId() : null,
             a != null ? a.getNickname() : null,
             null,
-            0
+            0,
+            List.of()
         );
     }
 
@@ -76,13 +79,17 @@ public record PostResponse(
             a != null ? a.getId() : null,
             a != null ? a.getNickname() : null,
             isLikedByCurrentUser,
-            0
+            0,
+            List.of()
         );
     }
 
-    public static PostResponse from(Post p, boolean isLikedByCurrentUser, int commentCount) {
-        List<String> safeTages = new ArrayList<>(p.getTags());
+    public static PostResponse from(Post p, boolean isLikedByCurrentUser, int commentCount,
+        List<CommentResponse> bestComments) {
+        List<String> safeTags = new ArrayList<>(p.getTags());
         User a = p.getAuthor();
+
+        List<CommentResponse> safeBest = (bestComments != null) ? bestComments : List.of();
 
         return new PostResponse(
             p.getId(),
@@ -91,7 +98,7 @@ public record PostResponse(
             p.getLatitude(),
             p.getLongitude(),
             p.getRegion(),
-            safeTages,
+            safeTags,
             p.getLikeCount(),
             p.getViewCount(),
             p.getStatus(),
@@ -102,7 +109,8 @@ public record PostResponse(
             a != null ? a.getId() : null,
             a != null ? a.getNickname() : null,
             isLikedByCurrentUser,
-            commentCount
+            commentCount,
+            safeBest
         );
     }
 }
