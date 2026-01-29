@@ -21,4 +21,14 @@ public interface CommentRepositoryCustom {
      * - 작성시간 오름차순
      */
     List<Comment> findRepliesForList(List<Long> parentIds);
+
+    /**
+     * 베스트 댓글(상단 노출용)
+     * - 루트/대댓글 구분 없이 후보
+     * - status = ACTIVE 만 (삭제 댓글은 베스트에서 제외)
+     * - likeCount >= minLikes
+     * - likeCount DESC, createAt DESC
+     * - limit 개수만 반환
+     */
+    List<Comment> findBestComments(Long postId, int minLikes, int limit);
 }
