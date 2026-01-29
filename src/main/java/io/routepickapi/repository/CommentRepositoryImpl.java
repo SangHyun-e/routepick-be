@@ -92,4 +92,32 @@ public class CommentRepositoryImpl implements CommentRepositoryCustom {
             .orderBy(comment.createdAt.asc())
             .fetch();
     }
+
+    @Override
+    public List<Comment> findBestComments(Long postId, int minLikes, int limit) {
+        if (postId == null) {
+            return List.of();
+
+        }
+        if (limit <= 0) {
+            return List.of();
+        }
+
+        int safeMinLikes = Math.max(0, minLikes);
+
+        return queryFactory
+            .selectFrom(comment)
+            .leftJoin(comment.author).fetchJoin()
+            .where(
+                comment.post.id.eq(postId),
+                comment.status.eq(CommentStatus.ACTIVE),
+                comment.likeCount.goe(safeMinLikes)
+            )
+            .orderBy(
+                comment.likeCount.desc(),
+                comment.createdAt.desc()
+            )
+            .limit(limit)
+            .fetch();
+    }
 }
