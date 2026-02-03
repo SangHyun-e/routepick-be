@@ -38,6 +38,11 @@ public class AuthService {
             throw new CustomException(ErrorType.USER_EMAIL_EXISTS);
         }
 
+        if (userRepository.existsByNickname(req.nickname())) {
+            log.warn("SignUp failed: nickname already exists (nickname={})", req.nickname());
+            throw new CustomException(ErrorType.USER_NICKNAME_EXISTS);
+        }
+
         String hash = passwordEncoder.encode(req.password());
         User user = new User(req.email(), hash, req.nickname());
         Long id = userRepository.save(user).getId();
