@@ -5,3 +5,10 @@ spring:
     active: dev
 server:
   port: 8080
+
+app:
+  auth:
+    email-verify:
+      ttl-seconds: 600
+      code-length: 6
+      max-tries: 5

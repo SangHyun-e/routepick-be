@@ -3,6 +3,8 @@ package io.routepickapi.controller;
 import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.IssuedTokens;
+import io.routepickapi.dto.auth.EmailVerifyConfirmRequest;
+import io.routepickapi.dto.auth.EmailVerifySendRequest;
 import io.routepickapi.dto.auth.LoginRequest;
 import io.routepickapi.dto.auth.LoginResponse;
 import io.routepickapi.dto.auth.SessionInfoResponse;
@@ -10,6 +12,7 @@ import io.routepickapi.dto.auth.SignUpRequest;
 import io.routepickapi.dto.auth.SignUpResponse;
 import io.routepickapi.security.AuthUser;
 import io.routepickapi.service.AuthService;
+import io.routepickapi.service.EmailVerificationService;
 import io.routepickapi.service.SessionService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -45,6 +48,7 @@ public class AuthController {
     private static final String REFRESH_COOKIE = "RP_REFRESH"; // 쿠키 이름 (고정)
     private final AuthService authService;
     private final SessionService sessionService;
+    private final EmailVerificationService emailVerificationService;
 
     // 공통 로직 통합 (refresh 쿠키 생성)
     private ResponseCookie buildRefreshCookie(String value, long maxAgeSec) {
@@ -181,6 +185,22 @@ public class AuthController {
         log.debug("DELETE /auth/sessions/{tid} - userId={}, tid={}", me.id(), tid);
         sessionService.revokeSession(me.id(), tid);
         log.info("Session revoke success (userId={}, tid={})", me.id(), tid);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "이메일 인증코드 발급", description = "PENDING 사용자에게 인증코드 발급(현재는 로그로만)")
+    @PostMapping("/email/verify-code/send")
+    public ResponseEntity<Void> sendEmailVerifyCode(
+        @Valid @RequestBody EmailVerifySendRequest req) {
+        emailVerificationService.sendCode(req.email());
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "이메일 인증코드 확인", description = "코드 검증 성공 시 사용자 ACTIVE 전환")
+    @PostMapping("/email/verify-code/confirm")
+    public ResponseEntity<Void> confirmEmailVerifyCode(@Valid @RequestBody
+    EmailVerifyConfirmRequest req) {
+        emailVerificationService.confirmCode(req.email(), req.code());
         return ResponseEntity.noContent().build();
     }
 }
