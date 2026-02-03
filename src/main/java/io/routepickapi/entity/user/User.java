@@ -41,7 +41,7 @@ public class User extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
-    private UserStatus status = UserStatus.ACTIVE;
+    private UserStatus status = UserStatus.PENDING;
 
     public User(String email, String passwordHash, String nickname) {
         setEmail(email);
@@ -80,5 +80,9 @@ public class User extends BaseEntity {
 
     public void delete() {
         this.status = UserStatus.DELETED;
+    }
+
+    public void markPending() {
+        this.status = UserStatus.PENDING;
     }
 }
