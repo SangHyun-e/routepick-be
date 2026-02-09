@@ -30,6 +30,14 @@ public enum ErrorType {
     AUTH_EMAIL_VERIFY_TOO_MANY_TRIES(HttpStatus.TOO_MANY_REQUESTS, "AUTH-429",
         "인증 시도 횟수를 초과했습니다. 다시 발급받아주세요."),
 
+    /* === 비밀번호 재설정 코드 === */
+    AUTH_PASSWORD_RESET_CODE_INVALID(HttpStatus.BAD_REQUEST, "AUTH-420",
+        "비밀번호 재설정 코드가 올바르지 않습니다."),
+    AUTH_PASSWORD_RESET_CODE_EXPIRED(HttpStatus.BAD_REQUEST, "AUTH-421",
+        "비밀번호 재설정 코드가 만료되었거나 존재하지 않습니다."),
+    AUTH_PASSWORD_RESET_TOO_MANY_TRIES(HttpStatus.TOO_MANY_REQUESTS, "AUTH-430",
+        "비밀번호 재설정 시도 횟수를 초과했습니다. 다시 요청해주세요."),
+
     /* === 유저 === */
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER-404", "사용자를 찾을 수 없습니다."),
     USER_BLOCKED(HttpStatus.FORBIDDEN, "USER-403", "차단된 사용자입니다."),

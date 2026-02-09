@@ -11,6 +11,10 @@ app:
       ttl-seconds: 600
       code-length: 6
       max-tries: 5
+    password-reset:
+      ttl-seconds: 600
+      code-length: 6
+      max-tries: 5
 
 jwt:
   secret: ${JWT_SECRET}
