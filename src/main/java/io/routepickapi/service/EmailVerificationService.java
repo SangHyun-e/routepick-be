@@ -24,6 +24,7 @@ public class EmailVerificationService {
     private static final String TRIES_PREFIX = "rp:email:verify:tries:";
     private final StringRedisTemplate redisTemplate;
     private final UserRepository userRepository;
+    private final EmailSender emailSender;
     private final SecureRandom random = new SecureRandom();
 
     @Value("${app.auth.email-verify.ttl-seconds:600}")
@@ -58,9 +59,7 @@ public class EmailVerificationService {
         redisTemplate.opsForValue().set(key, code, Duration.ofSeconds(ttlSeconds));
         redisTemplate.delete(triesKey);
 
-        // 메일 발송 API 붙이기 전, 로그로 사용
-        log.info("[EMAIL_VERIFY] code issued: userId={}, email={}, code={}, ttlSec={}",
-            user.getId(), user.getEmail(), code, ttlSeconds);
+        emailSender.sendVerificationCode(user, code, ttlSeconds);
     }
 
     /**
