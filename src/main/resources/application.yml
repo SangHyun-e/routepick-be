@@ -1,8 +1,7 @@
 spring:
   application:
     name: routepick-api
-  profiles:
-    active: dev
+
 server:
   port: 8080
 
@@ -12,3 +11,25 @@ app:
       ttl-seconds: 600
       code-length: 6
       max-tries: 5
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-ttl-seconds: 3600
+  refresh-ttl-seconds: 1209600 # 14일
+  issuer: routepick
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui
+    display-request-duration: true
+  api-docs:
+    path: /v3/api-docs
+  packages-to-scan: io.routepickapi
+  paths-to-match: /**
+
+logging:
+  level:
+    root: INFO
+    io.routepickapi: DEBUG
+    org.springframework: INFO
+    org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: ERROR

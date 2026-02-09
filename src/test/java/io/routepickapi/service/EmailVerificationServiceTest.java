@@ -36,7 +36,7 @@ class EmailVerificationServiceTest {
     private UserRepository userRepository;
 
     @Mock
-    private EmailSender emailSender;
+    private EmailSenderService emailSender;
 
     @Mock
     private ValueOperations<String, String> valueOperations;

@@ -18,14 +18,14 @@ import software.amazon.awssdk.services.ses.model.SendEmailRequest;
 @Slf4j
 @Component
 @Profile("prod")
-public class SesEmailSender implements EmailSender {
+public class SesEmailSenderService implements EmailSenderService {
 
     private static final String SUBJECT = "[RoutePick] 이메일 인증 코드";
 
     private final SesClient sesClient;
     private final String fromEmail;
 
-    public SesEmailSender(
+    public SesEmailSenderService(
         @Value("${aws.region:ap-northeast-2}") String region,
         @Value("${aws.ses.from-email}") String fromEmail
     ) {

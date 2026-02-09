@@ -24,7 +24,7 @@ public class EmailVerificationService {
     private static final String TRIES_PREFIX = "rp:email:verify:tries:";
     private final StringRedisTemplate redisTemplate;
     private final UserRepository userRepository;
-    private final EmailSender emailSender;
+    private final EmailSenderService emailSender;
     private final SecureRandom random = new SecureRandom();
 
     @Value("${app.auth.email-verify.ttl-seconds:600}")

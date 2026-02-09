@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @Profile("dev")
-public class LogEmailSender implements EmailSender {
+public class LogEmailSenderService implements EmailSenderService {
 
     @Override
     public void sendVerificationCode(User user, String code, long ttlSeconds) {

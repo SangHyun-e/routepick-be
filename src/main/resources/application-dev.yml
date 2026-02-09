@@ -1,46 +1,23 @@
-# src/main/resources/application-dev.yml
 spring:
   datasource:
     url: jdbc:mysql://127.0.0.1:3306/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul
     username: ${MYSQL_USER}
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+
   jpa:
     hibernate:
-      ddl-auto: validate # 스키마는 Flyway가 책임지고, JPA는 검증만.
+      ddl-auto: validate
     open-in-view: false
     properties:
       hibernate.format_sql: true
 
   data:
     redis:
-      host: ${REDIS_HOST:127.0.0.1} # 로컬 기본값
+      host: ${REDIS_HOST:127.0.0.1}
       port: ${REDIS_PORT:6379}
       timeout: 2s
 
   flyway:
     enabled: true
     locations: classpath:db/migration
-
-springdoc:
-  swagger-ui:
-    path: /swagger-ui
-    display-request-duration: true
-  api-docs:
-    path: /v3/api-docs
-  packages-to-scan: io.routepickapi
-  paths-to-match: /**
-
-jwt:
-  secret: ${JWT_SECRET}
-  access-ttl-seconds: 3600
-  refresh-ttl-seconds: 1209600 # 14일 1209600
-  issuer: routepick
-
-logging:
-  level:
-    root: INFO
-    io.routepickapi: DEBUG
-    org.springframework: INFO
-    org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: ERROR
-
