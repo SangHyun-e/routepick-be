@@ -1,5 +1,6 @@
 package io.routepickapi.security.jwt;
 
+import io.routepickapi.entity.user.UserRole;
 import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.repository.UserRepository;
 import io.routepickapi.security.AuthUser;
@@ -9,6 +10,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -105,10 +107,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Long userId = jwtProvider.getUserId(token);
                 userRepository.findByIdAndStatus(userId, UserStatus.ACTIVE).ifPresent(user -> {
                     AuthUser principal = new AuthUser(user.getId(), user.getEmail(),
-                        user.getNickname());
-                    UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
-                        principal, null, List.of(new SimpleGrantedAuthority("ROLE_USER"))
-                    );
+                        user.getNickname(), user.getRole());
+                    List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+                    authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+                    if (user.getRole() == UserRole.ADMIN) {
+                        authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
+                    }
+                    UsernamePasswordAuthenticationToken authenticationToken =
+                        new UsernamePasswordAuthenticationToken(principal, null, authorities);
                     authenticationToken.setDetails(
                         new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authenticationToken);

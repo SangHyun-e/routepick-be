@@ -1,6 +1,10 @@
 spring:
   application:
     name: routepick-api
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 450MB
 
 server:
   port: 8080
@@ -15,6 +19,18 @@ app:
       ttl-seconds: 600
       code-length: 6
       max-tries: 5
+  admin:
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}
+    nickname: ${ADMIN_NICKNAME:}
+
+kakao:
+  rest-api-key: ${KAKAO_REST_API_KEY:}
+
+aws:
+  region: ${AWS_REGION:ap-northeast-2}
+  s3:
+    bucket: ${AWS_S3_BUCKET:}
 
 jwt:
   secret: ${JWT_SECRET}

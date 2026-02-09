@@ -33,6 +33,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'software.amazon.awssdk:ses:2.25.57'
+    implementation 'software.amazon.awssdk:s3:2.25.57'
 
     // JWT 관련 의존성
     implementation 'io.jsonwebtoken:jjwt-api:0.12.3'
@@ -72,4 +73,3 @@ configurations.configureEach {
 tasks.named('test') {
     useJUnitPlatform()
 }
-

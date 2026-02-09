@@ -113,6 +113,12 @@ public class PostController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping("/{id:\\d+}/hide")
+    public ApiMessage hide(@PathVariable(name = "id") @Min(1) Long id) {
+        postService.hide(id);
+        return new ApiMessage("hidden");
+    }
+
     @PatchMapping("/{id:\\d+}/activate")
     public ApiMessage activate(@PathVariable(name = "id") @Min(1) Long id) {
         postService.activate(id);

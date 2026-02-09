@@ -1,6 +1,7 @@
 package io.routepickapi.dto.user;
 
 import io.routepickapi.entity.user.User;
+import io.routepickapi.entity.user.UserRole;
 import java.time.LocalDateTime;
 
 /**
@@ -11,6 +12,7 @@ public record MeResponse(
     Long id,
     String email,
     String nickname,
+    UserRole role,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {
@@ -21,6 +23,7 @@ public record MeResponse(
             u.getId(),
             u.getEmail(),
             u.getNickname(),
+            u.getRole(),
             u.getCreatedAt(),
             u.getUpdatedAt()
         );
