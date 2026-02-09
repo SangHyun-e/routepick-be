@@ -1,0 +1,5 @@
+# src/main/resources/application-prod.yml
+aws:
+  region: ap-northeast-2
+  ses:
+    from-email: ${AWS_SES_FROM_EMAIL}
