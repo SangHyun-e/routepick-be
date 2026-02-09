@@ -1,11 +1,14 @@
 package io.routepickapi.repository;
 
+import static io.routepickapi.entity.comment.QComment.comment;
 import static io.routepickapi.entity.post.QPost.post;
 
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.OrderSpecifier;
+import com.querydsl.core.types.dsl.NumberExpression;
 import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
+import io.routepickapi.entity.comment.CommentStatus;
 import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.post.PostStatus;
 import java.util.ArrayList;
@@ -41,11 +44,27 @@ public class PostQueryRepositoryImpl implements PostQueryRepository {
                 .or(post.content.containsIgnoreCase(k)));
         }
 
-        // 본문 쿼리
-        List<Post> content = queryFactory
+        boolean hasCommentCountSort = pageable.getSort().stream()
+            .anyMatch(o -> "commentCount".equals(o.getProperty()));
+
+        NumberExpression<Long> commentCountExpr = comment.id.countDistinct();
+
+        JPAQuery<Post> contentQuery = queryFactory
             .selectFrom(post)
-            .where(where)
-            .orderBy(orderSpecifiers(pageable)) // 정렬 매핑
+            .where(where);
+
+        if (hasCommentCountSort) {
+            contentQuery
+                .leftJoin(comment)
+                .on(
+                    comment.post.id.eq(post.id),
+                    comment.status.eq(CommentStatus.ACTIVE)
+                )
+                .groupBy(post.id);
+        }
+        // 본문 쿼리
+        List<Post> content = contentQuery
+            .orderBy(orderSpecifiers(pageable, commentCountExpr)) // 정렬 매핑
             .offset(pageable.getOffset())
             .limit(pageable.getPageSize())
             .fetch();
@@ -64,7 +83,8 @@ public class PostQueryRepositoryImpl implements PostQueryRepository {
      * 정렬 화이트리스트 매핑
      * - 허용: createdAt, likeCount, viewCount -미지정/빈 정렬이면 createdAt DESC 기본 적용
      */
-    private OrderSpecifier<?>[] orderSpecifiers(Pageable pageable) {
+    private OrderSpecifier<?>[] orderSpecifiers(Pageable pageable,
+        NumberExpression<Long> commentCountExpr) {
         List<OrderSpecifier<?>> orders = new ArrayList<>();
 
         pageable.getSort().forEach(order -> {
@@ -77,6 +97,8 @@ public class PostQueryRepositoryImpl implements PostQueryRepository {
                 orders.add(asc ? post.likeCount.asc() : post.likeCount.desc());
             } else if ("viewCount".equals(prop)) {
                 orders.add(asc ? post.viewCount.asc() : post.viewCount.desc());
+            } else if ("commentCount".equals(prop)) {
+                orders.add(asc ? commentCountExpr.asc() : commentCountExpr.desc());
             }
         });
 

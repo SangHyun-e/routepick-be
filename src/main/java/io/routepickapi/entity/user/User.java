@@ -36,12 +36,12 @@ public class User extends BaseEntity {
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
-    @Column(nullable = false, length = 40)
+    @Column(nullable = false, length = 40, unique = true)
     private String nickname;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
-    private UserStatus status = UserStatus.ACTIVE;
+    private UserStatus status = UserStatus.PENDING;
 
     public User(String email, String passwordHash, String nickname) {
         setEmail(email);
@@ -80,5 +80,9 @@ public class User extends BaseEntity {
 
     public void delete() {
         this.status = UserStatus.DELETED;
+    }
+
+    public void markPending() {
+        this.status = UserStatus.PENDING;
     }
 }

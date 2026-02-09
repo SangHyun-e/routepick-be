@@ -24,10 +24,19 @@ public enum ErrorType {
     AUTH_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "AUTH-402", "유효하지 않은 토큰입니다."),
     AUTH_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "AUTH-403", "만료된 토큰입니다."),
 
+    /* === 이메일 인증 코드 === */
+    AUTH_EMAIL_VERIFY_CODE_INVALID(HttpStatus.BAD_REQUEST, "AUTH-410", "인증코드가 올바르지 않습니다."),
+    AUTH_EMAIL_VERIFY_CODE_EXPIRED(HttpStatus.BAD_REQUEST, "AUTH-411", "인증코드가 만료되었거나 존재하지 않습니다."),
+    AUTH_EMAIL_VERIFY_TOO_MANY_TRIES(HttpStatus.TOO_MANY_REQUESTS, "AUTH-429",
+        "인증 시도 횟수를 초과했습니다. 다시 발급받아주세요."),
+
     /* === 유저 === */
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER-404", "사용자를 찾을 수 없습니다."),
     USER_BLOCKED(HttpStatus.FORBIDDEN, "USER-403", "차단된 사용자입니다."),
     USER_EMAIL_EXISTS(HttpStatus.CONFLICT, "USER-409", "이미 사용 중인 이메일입니다."),
+    USER_NICKNAME_EXISTS(HttpStatus.CONFLICT, "USER-410", "이미 사용 중인 닉네임입니다."),
+
+    USER_EMAIL_ALREADY_VERIFIED(HttpStatus.CONFLICT, "USER-409", "이미 인증이 완료된 이메일입니다."),
 
     /* === 게시글 === */
     POST_NOT_FOUND(HttpStatus.NOT_FOUND, "POST-404", "게시글을 찾을 수 없습니다."),

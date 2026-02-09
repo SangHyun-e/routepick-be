@@ -28,6 +28,7 @@ public class AuthService {
     private final JwtProvider jwtProvider;
     private final RefreshTokenService refreshTokenService; // Redis Store
     private final AccessTokenBlacklistService blacklistService;
+    private final EmailVerificationService emailVerificationService;
 
     // 회원가입
     public SignUpResponse signUp(SignUpRequest req) {
@@ -38,11 +39,18 @@ public class AuthService {
             throw new CustomException(ErrorType.USER_EMAIL_EXISTS);
         }
 
+        if (userRepository.existsByNickname(req.nickname())) {
+            log.warn("SignUp failed: nickname already exists (nickname={})", req.nickname());
+            throw new CustomException(ErrorType.USER_NICKNAME_EXISTS);
+        }
+
         String hash = passwordEncoder.encode(req.password());
         User user = new User(req.email(), hash, req.nickname());
         Long id = userRepository.save(user).getId();
+        emailVerificationService.sendCode(req.email());
 
-        log.info("SignUp success: id={}, email={}", id, user.getEmail());
+        log.info("SignUp success: id={}, email={}, status={}", id, user.getEmail(),
+            user.getStatus());
         return new SignUpResponse(id, user.getEmail(), user.getNickname());
     }
 

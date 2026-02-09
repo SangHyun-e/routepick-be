@@ -1,5 +1,5 @@
 package io.routepickapi.entity.user;
 
 public enum UserStatus {
-    ACTIVE, BLOCKED, DELETED
+    PENDING, ACTIVE, BLOCKED, DELETED
 }

@@ -15,6 +15,7 @@ public record CommentResponse(
     int likeCount,
     CommentStatus status,
     LocalDateTime createdAt,
+    LocalDateTime updatedAt,
     Long authorId,
     String authorNickname,
     List<CommentResponse> replies
@@ -57,6 +58,7 @@ public record CommentResponse(
             c.getLikeCount(),
             c.getStatus(),
             c.getCreatedAt(),
+            c.getUpdatedAt(),
             toAuthorId(c),
             toAuthorNickname(c),
             new ArrayList<>()
@@ -77,6 +79,7 @@ public record CommentResponse(
             root.getLikeCount(),
             root.getStatus(),
             root.getCreatedAt(),
+            root.getUpdatedAt(),
             toAuthorId(root),
             toAuthorNickname(root),
             childDtos
