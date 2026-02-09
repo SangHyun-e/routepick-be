@@ -21,6 +21,7 @@ import software.amazon.awssdk.services.ses.model.SendEmailRequest;
 public class SesEmailSenderService implements EmailSenderService {
 
     private static final String SUBJECT = "[RoutePick] 이메일 인증 코드";
+    private static final String RESET_SUBJECT = "[RoutePick] 비밀번호 재설정 코드";
 
     private final SesClient sesClient;
     private final String fromEmail;
@@ -54,6 +55,28 @@ public class SesEmailSenderService implements EmailSenderService {
 
         sesClient.sendEmail(request);
         log.info("SES verification email sent (email={}, ttlMinutes={})", user.getEmail(),
+            ttlMinutes);
+    }
+
+    @Override
+    public void sendPasswordResetCode(User user, String code, long ttlSeconds) {
+        long ttlMinutes = Math.max(1, Duration.ofSeconds(ttlSeconds).toMinutes());
+        String body = String.format("비밀번호 재설정 코드는 %s 입니다.%n유효시간은 %d분입니다.", code,
+            ttlMinutes);
+
+        SendEmailRequest request = SendEmailRequest.builder()
+            .source(fromEmail)
+            .destination(Destination.builder().toAddresses(user.getEmail()).build())
+            .message(Message.builder()
+                .subject(Content.builder().data(RESET_SUBJECT).charset("UTF-8").build())
+                .body(Body.builder()
+                    .text(Content.builder().data(body).charset("UTF-8").build())
+                    .build())
+                .build())
+            .build();
+
+        sesClient.sendEmail(request);
+        log.info("SES password reset email sent (email={}, ttlMinutes={})", user.getEmail(),
             ttlMinutes);
     }
 

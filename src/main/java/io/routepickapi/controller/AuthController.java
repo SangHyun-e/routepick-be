@@ -7,12 +7,15 @@ import io.routepickapi.dto.auth.EmailVerifyConfirmRequest;
 import io.routepickapi.dto.auth.EmailVerifySendRequest;
 import io.routepickapi.dto.auth.LoginRequest;
 import io.routepickapi.dto.auth.LoginResponse;
+import io.routepickapi.dto.auth.PasswordResetConfirmRequest;
+import io.routepickapi.dto.auth.PasswordResetRequest;
 import io.routepickapi.dto.auth.SessionInfoResponse;
 import io.routepickapi.dto.auth.SignUpRequest;
 import io.routepickapi.dto.auth.SignUpResponse;
 import io.routepickapi.security.AuthUser;
 import io.routepickapi.service.AuthService;
 import io.routepickapi.service.EmailVerificationService;
+import io.routepickapi.service.PasswordResetService;
 import io.routepickapi.service.SessionService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -49,6 +52,7 @@ public class AuthController {
     private final AuthService authService;
     private final SessionService sessionService;
     private final EmailVerificationService emailVerificationService;
+    private final PasswordResetService passwordResetService;
 
     // 공통 로직 통합 (refresh 쿠키 생성)
     private ResponseCookie buildRefreshCookie(String value, long maxAgeSec) {
@@ -201,6 +205,22 @@ public class AuthController {
     public ResponseEntity<Void> confirmEmailVerifyCode(@Valid @RequestBody
     EmailVerifyConfirmRequest req) {
         emailVerificationService.confirmCode(req.email(), req.code());
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "비밀번호 재설정 코드 요청", description = "이메일로 재설정 코드 발송")
+    @PostMapping("/password/reset/request")
+    public ResponseEntity<Void> requestPasswordReset(@Valid @RequestBody PasswordResetRequest req) {
+        passwordResetService.requestReset(req.email());
+        return ResponseEntity.ok().build();
+    }
+
+    @Operation(summary = "비밀번호 재설정 코드 확인", description = "코드 검증 성공 시 비밀번호 변경")
+    @PostMapping("/password/reset/confirm")
+    public ResponseEntity<Void> confirmPasswordReset(
+        @Valid @RequestBody PasswordResetConfirmRequest req
+    ) {
+        passwordResetService.confirmReset(req.email(), req.code(), req.newPassword());
         return ResponseEntity.noContent().build();
     }
 }

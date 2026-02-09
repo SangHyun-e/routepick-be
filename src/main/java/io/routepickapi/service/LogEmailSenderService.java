@@ -15,4 +15,10 @@ public class LogEmailSenderService implements EmailSenderService {
         log.info("[EMAIL_VERIFY] code issued: userId={}, email={}, code={}, ttlSec={}",
             user.getId(), user.getEmail(), code, ttlSeconds);
     }
+
+    @Override
+    public void sendPasswordResetCode(User user, String code, long ttlSeconds) {
+        log.info("[PASSWORD_RESET] code issued: userId={}, email={}, code={}, ttlSec={}",
+            user.getId(), user.getEmail(), code, ttlSeconds);
+    }
 }
