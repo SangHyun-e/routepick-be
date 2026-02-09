@@ -65,7 +65,8 @@ public class SecurityConfig {
                     "/swagger-ui/**"
                 ).permitAll()
                 .requestMatchers(HttpMethod.POST, "/auth/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/posts/**", "/posts/*/comments/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/posts/**", "/posts/*/comments/**", "/places/**")
+                .permitAll()
                 .anyRequest().authenticated()
             )
             // UsernamePasswordAuthenticationFilter 앞에 JWT 필터 삽입

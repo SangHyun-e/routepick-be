@@ -43,6 +43,10 @@ public class User extends BaseEntity {
     @Column(nullable = false, length = 16)
     private UserStatus status = UserStatus.PENDING;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private UserRole role = UserRole.USER;
+
     public User(String email, String passwordHash, String nickname) {
         setEmail(email);
         setPasswordHash(passwordHash);
@@ -68,6 +72,13 @@ public class User extends BaseEntity {
             throw new IllegalArgumentException("invalid nickname");
         }
         this.nickname = nickname;
+    }
+
+    public void setRole(UserRole role) {
+        if (role == null) {
+            throw new IllegalArgumentException("invalid role");
+        }
+        this.role = role;
     }
 
     public void block() {

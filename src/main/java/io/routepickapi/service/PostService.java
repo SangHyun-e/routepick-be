@@ -113,6 +113,29 @@ public class PostService {
         });
     }
 
+    @Transactional(readOnly = true)
+    public Page<PostListItemResponse> listForAdmin(
+        PostStatus status,
+        String region,
+        String keyword,
+        Pageable pageable
+    ) {
+        Page<Post> posts = postQueryRepository.searchByStatusRegionAndKeyword(status, region,
+            keyword, pageable);
+
+        List<Long> postIds = posts.getContent().stream()
+            .map(Post::getId)
+            .toList();
+
+        Map<Long, Integer> commentCountMap =
+            commentQueryRepository.countByPostIds(postIds, CommentStatus.ACTIVE);
+
+        return posts.map(p -> {
+            int commentCount = commentCountMap.getOrDefault(p.getId(), 0);
+            return PostListItemResponse.from(p, commentCount);
+        });
+    }
+
     public PostResponse getDetail(Long id, boolean increaseView, Long currentUserId) {
         // 1) 존재/상태 확인 + 태그 fetch join
         Post post = postRepository.findWithTagsById(id)
@@ -150,6 +173,13 @@ public class PostService {
         log.info("[DETAIL] postId={}, commentCount={}, bestCount={}", post.getId(), commentCount,
             bestDtos.size());
         return PostResponse.from(post, isLiked, commentCount, bestDtos);
+    }
+
+    @Transactional(readOnly = true)
+    public PostStatus findStatus(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        return post.getStatus();
     }
 
     @Transactional(readOnly = true)
@@ -278,6 +308,13 @@ public class PostService {
         Post post = postRepository.findById(id)
             .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
         post.softDelete();
+    }
+
+    @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
+    public void hide(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        post.hide();
     }
 
     @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")

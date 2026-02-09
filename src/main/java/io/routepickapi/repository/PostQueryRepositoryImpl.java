@@ -30,14 +30,23 @@ public class PostQueryRepositoryImpl implements PostQueryRepository {
 
     @Override
     public Page<Post> searchByRegionAndKeyword(String region, String keyword, Pageable pageable) {
+        return searchByStatusRegionAndKeyword(PostStatus.ACTIVE, region, keyword, pageable);
+    }
+
+    @Override
+    public Page<Post> searchByStatusRegionAndKeyword(
+        PostStatus status,
+        String region,
+        String keyword,
+        Pageable pageable
+    ) {
         BooleanBuilder where = new BooleanBuilder();
-        // 상태는 ACTIVE 만 노출
-        where.and(post.status.eq(PostStatus.ACTIVE));
-        // 지역 필터 (region 이 비어있지 않다면)
+        if (status != null) {
+            where.and(post.status.eq(status));
+        }
         if (region != null && !region.isBlank()) {
             where.and(post.region.eq(region));
         }
-        // 키워드 검색: 제목 or 본문에 'keyword' 포함(대소문자 무시)
         if (keyword != null && !keyword.isBlank()) {
             String k = keyword.trim();
             where.and(post.title.containsIgnoreCase(k)
@@ -62,20 +71,18 @@ public class PostQueryRepositoryImpl implements PostQueryRepository {
                 )
                 .groupBy(post.id);
         }
-        // 본문 쿼리
+
         List<Post> content = contentQuery
-            .orderBy(orderSpecifiers(pageable, commentCountExpr)) // 정렬 매핑
+            .orderBy(orderSpecifiers(pageable, commentCountExpr))
             .offset(pageable.getOffset())
             .limit(pageable.getPageSize())
             .fetch();
 
-        // 카운트 쿼리
         JPAQuery<Long> countQuery = queryFactory
             .select(post.count())
             .from(post)
             .where(where);
 
-        // PageableExecutionUtils: 마지막 페이지 등에서 카운트 생략 최적화
         return PageableExecutionUtils.getPage(content, pageable, countQuery::fetchOne);
     }
 
