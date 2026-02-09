@@ -15,7 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.ObjectCannedACL;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
@@ -65,7 +64,6 @@ public class S3StorageService {
                     .key(key)
                     .contentType(file.getContentType())
                     .contentLength(file.getSize())
-                    .acl(ObjectCannedACL.PUBLIC_READ)
                     .build();
                 s3Client.putObject(request, RequestBody.fromInputStream(inputStream, file.getSize()));
                 String url = s3Client.utilities().getUrl(builder -> builder.bucket(bucketName).key(key))

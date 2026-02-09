@@ -49,6 +49,10 @@ io.routepickapi
 - `AWS_REGION`: AWS 리전 (기본값 `ap-northeast-2`)
 - `AWS_S3_BUCKET`: 이미지 업로드용 S3 버킷 이름
 
+### S3 공개 설정
+- 업로드된 이미지는 버킷 정책을 통해 `s3:GetObject` 공개 접근을 허용해야 합니다.
+- 버킷이 `ACL 비활성(Bucket owner enforced)` 상태여도 동작하도록 ACL을 사용하지 않습니다.
+
 ---
 
 
