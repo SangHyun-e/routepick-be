@@ -75,6 +75,11 @@ public class Comment extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private CommentStatus status = CommentStatus.ACTIVE;
+
+    // 삭제 주체
+    @Enumerated(EnumType.STRING)
+    @Column(name = "deleted_by", nullable = false, length = 16)
+    private CommentDeletedBy deletedBy = CommentDeletedBy.USER;
     @Setter
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "user_id")
@@ -115,7 +120,18 @@ public class Comment extends BaseEntity {
     }
 
     public void softDelete() {
+        softDelete(CommentDeletedBy.USER);
+    }
+
+    public void softDelete(CommentDeletedBy deletedBy) {
         this.status = CommentStatus.DELETED;
+        if (deletedBy != null) {
+            this.deletedBy = deletedBy;
+        }
+    }
+
+    public void activate() {
+        this.status = CommentStatus.ACTIVE;
     }
 
 }

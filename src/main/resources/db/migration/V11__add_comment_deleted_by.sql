@@ -1,0 +1,2 @@
+ALTER TABLE comments
+    ADD COLUMN deleted_by VARCHAR(16) NOT NULL DEFAULT 'USER' AFTER status;

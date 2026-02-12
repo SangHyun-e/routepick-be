@@ -1,6 +1,7 @@
 package io.routepickapi.dto.comment;
 
 import io.routepickapi.entity.comment.Comment;
+import io.routepickapi.entity.comment.CommentDeletedBy;
 import io.routepickapi.entity.comment.CommentStatus;
 import io.routepickapi.entity.user.User;
 import java.time.LocalDateTime;
@@ -26,7 +27,13 @@ public record CommentResponse(
     }
 
     private static String toContent(Comment c) {
-        return isDelete(c) ? "(삭제된 댓글입니다)" : c.getContent();
+        if (!isDelete(c)) {
+            return c.getContent();
+        }
+        if (c.getDeletedBy() == CommentDeletedBy.ADMIN) {
+            return "관리자에 의해 삭제된 댓글입니다.";
+        }
+        return "삭제된 댓글입니다.";
     }
 
     private static Long toAuthorId(Comment c) {

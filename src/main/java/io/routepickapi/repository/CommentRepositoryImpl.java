@@ -7,6 +7,8 @@ import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import io.routepickapi.entity.comment.Comment;
 import io.routepickapi.entity.comment.CommentStatus;
+import io.routepickapi.entity.user.QUser;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -101,5 +103,45 @@ public class CommentRepositoryImpl implements CommentRepositoryCustom {
             )
             .limit(limit)
             .fetch();
+    }
+
+    @Override
+    public Page<Comment> findForAdmin(List<CommentStatus> statuses, String keyword,
+        Pageable pageable) {
+        BooleanBuilder where = new BooleanBuilder();
+        QUser author = new QUser("commentAuthor");
+
+        if (statuses != null && !statuses.isEmpty()) {
+            where.and(comment.status.in(statuses));
+        }
+
+        if (keyword != null && !keyword.isBlank()) {
+            String k = keyword.trim();
+            where.and(
+                comment.content.containsIgnoreCase(k)
+                    .or(comment.post.title.containsIgnoreCase(k))
+                    .or(author.nickname.containsIgnoreCase(k))
+            );
+        }
+
+        JPAQuery<Comment> contentQuery = queryFactory
+            .selectFrom(comment)
+            .leftJoin(comment.post).fetchJoin()
+            .leftJoin(comment.author, author).fetchJoin()
+            .leftJoin(comment.parent).fetchJoin()
+            .where(where)
+            .orderBy(comment.createdAt.desc())
+            .offset(pageable.getOffset())
+            .limit(pageable.getPageSize());
+
+        List<Comment> content = new ArrayList<>(contentQuery.fetch());
+
+        JPAQuery<Long> countQuery = queryFactory
+            .select(comment.count())
+            .from(comment)
+            .leftJoin(comment.author, author)
+            .where(where);
+
+        return PageableExecutionUtils.getPage(content, pageable, countQuery::fetchOne);
     }
 }

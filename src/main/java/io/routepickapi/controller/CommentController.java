@@ -4,6 +4,8 @@ import io.routepickapi.dto.comment.CommentCreateRequest;
 import io.routepickapi.dto.comment.CommentLikeToggleResponse;
 import io.routepickapi.dto.comment.CommentResponse;
 import io.routepickapi.dto.comment.CommentUpdateRequest;
+import io.routepickapi.entity.comment.CommentDeletedBy;
+import io.routepickapi.entity.user.UserRole;
 import io.routepickapi.security.AuthUser;
 import io.routepickapi.service.CommentService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -106,12 +108,16 @@ public class CommentController {
     @DeleteMapping("/{postId}/comments/{commentId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> delete(
+        @AuthenticationPrincipal AuthUser currentUser,
         @Parameter(description = "게시글 ID") @PathVariable @Min(1) Long postId,
         @Parameter(description = "댓글 ID") @PathVariable @Min(1) Long commentId
     ) {
         log.debug("DELETE /posts/{}/comments/{} - request received", postId, commentId);
 
-        commentService.softDelete(postId, commentId);
+        CommentDeletedBy deletedBy = (currentUser != null && currentUser.role() == UserRole.ADMIN)
+            ? CommentDeletedBy.ADMIN
+            : CommentDeletedBy.USER;
+        commentService.softDelete(postId, commentId, deletedBy);
 
         log.info("Comment soft-deleted: postId={}, commentId={}", postId, commentId);
         return ResponseEntity.noContent().build();
