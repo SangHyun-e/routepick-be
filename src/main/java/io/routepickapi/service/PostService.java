@@ -49,6 +49,7 @@ public class PostService {
     private final CommentQueryRepository commentQueryRepository;
     private final CommentRepository commentRepository;
     private final CommentLikeRepository commentLikeRepository;
+    private final S3StorageService s3StorageService;
 
     public PostResponse create(PostCreateRequest req, Long currentUserId) {
         Post post = new Post(req.title(), req.content());
@@ -322,6 +323,7 @@ public class PostService {
     public void softDelete(Long id) {
         Post post = postRepository.findById(id)
             .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        s3StorageService.deleteImagesFromContent(post.getContent());
         post.softDelete();
     }
 
@@ -354,6 +356,7 @@ public class PostService {
     public void hardDeleteByAdmin(Long id) {
         Post post = postRepository.findById(id)
             .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        s3StorageService.deleteImagesFromContent(post.getContent());
         commentLikeRepository.deleteByCommentPostId(post.getId());
         commentRepository.deleteByPostId(post.getId());
         postRepository.delete(post);

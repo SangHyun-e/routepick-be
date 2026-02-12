@@ -4,10 +4,15 @@ import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
@@ -25,6 +31,9 @@ public class S3StorageService {
 
     private static final int MAX_FILES = 30;
     private static final long MAX_FILE_SIZE = 15L * 1024 * 1024;
+    private static final long MAX_TOTAL_SIZE = 100L * 1024 * 1024;
+    private static final Pattern IMAGE_SRC_PATTERN = Pattern.compile("src\\s*=\\s*['\"]([^'\"]+)['\"]",
+        Pattern.CASE_INSENSITIVE);
 
     private final S3Client s3Client;
 
@@ -38,6 +47,14 @@ public class S3StorageService {
         if (files.size() > MAX_FILES) {
             throw new CustomException(ErrorType.COMMON_INVALID_INPUT,
                 "이미지는 최대 30개까지 업로드할 수 있습니다.");
+        }
+        long totalSize = files.stream()
+            .filter(file -> file != null && !file.isEmpty())
+            .mapToLong(MultipartFile::getSize)
+            .sum();
+        if (totalSize > MAX_TOTAL_SIZE) {
+            throw new CustomException(ErrorType.COMMON_INVALID_INPUT,
+                "전체 이미지는 최대 100MB까지 업로드할 수 있습니다.");
         }
         if (bucketName == null || bucketName.isBlank()) {
             throw new CustomException(ErrorType.COMMON_INTERNAL, "S3 bucket 설정이 필요합니다.");
@@ -77,6 +94,33 @@ public class S3StorageService {
         return results;
     }
 
+    public void deleteImage(String key) {
+        String normalizedKey = normalizeKey(key);
+        if (bucketName == null || bucketName.isBlank()) {
+            throw new CustomException(ErrorType.COMMON_INTERNAL, "S3 bucket 설정이 필요합니다.");
+        }
+
+        try {
+            s3Client.deleteObject(DeleteObjectRequest.builder()
+                .bucket(bucketName)
+                .key(normalizedKey)
+                .build());
+        } catch (S3Exception e) {
+            log.error("S3 delete failed: key={}", normalizedKey, e);
+            throw new CustomException(ErrorType.COMMON_INTERNAL, "이미지 삭제에 실패했습니다.");
+        }
+    }
+
+    public void deleteImagesFromContent(String content) {
+        List<String> keys = extractKeysFromContent(content);
+        if (keys.isEmpty()) {
+            return;
+        }
+        for (String key : keys) {
+            deleteImage(key);
+        }
+    }
+
     private String getExtension(String originalFilename, String contentType) {
         if (originalFilename != null) {
             int dot = originalFilename.lastIndexOf('.');
@@ -94,5 +138,63 @@ public class S3StorageService {
 
     public record UploadResult(String key, String url, long size) {
 
+    }
+
+    private String normalizeKey(String key) {
+        if (key == null || key.isBlank()) {
+            throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "삭제할 이미지 키가 필요합니다.");
+        }
+        String normalized = key.trim();
+        if (!normalized.startsWith("posts/")) {
+            throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "삭제할 이미지 키가 올바르지 않습니다.");
+        }
+        return normalized;
+    }
+
+    private List<String> extractKeysFromContent(String content) {
+        if (content == null || content.isBlank()) {
+            return List.of();
+        }
+        Set<String> keys = new LinkedHashSet<>();
+        Matcher matcher = IMAGE_SRC_PATTERN.matcher(content);
+        while (matcher.find()) {
+            String url = matcher.group(1);
+            String key = extractKeyFromUrl(url);
+            if (key != null && key.startsWith("posts/")) {
+                keys.add(key);
+            }
+        }
+        return new ArrayList<>(keys);
+    }
+
+    private String extractKeyFromUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        try {
+            URI uri = URI.create(url);
+            String host = uri.getHost();
+            if (host == null || bucketName == null || bucketName.isBlank()) {
+                return null;
+            }
+            String path = uri.getPath();
+            if (path == null || path.isBlank()) {
+                return null;
+            }
+
+            String normalizedPath = path.startsWith("/") ? path.substring(1) : path;
+            String bucketPrefix = bucketName + "/";
+
+            if (host.startsWith(bucketName + ".s3.") || host.startsWith(bucketName + ".s3-")) {
+                return normalizedPath;
+            }
+            if ((host.startsWith("s3.") || host.startsWith("s3-")) && normalizedPath.startsWith(
+                bucketPrefix)) {
+                return normalizedPath.substring(bucketPrefix.length());
+            }
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+        return null;
     }
 }

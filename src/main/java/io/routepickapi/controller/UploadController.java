@@ -10,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -37,6 +38,14 @@ public class UploadController {
             .map(result -> new ImageInfo(result.key(), result.url(), result.size()))
             .toList();
         return ResponseEntity.ok(new ImageUploadResponse(images));
+    }
+
+    @Operation(summary = "이미지 삭제", description = "S3 이미지 삭제")
+    @DeleteMapping("/images")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> deleteImage(@RequestParam("key") String key) {
+        storageService.deleteImage(key);
+        return ResponseEntity.noContent().build();
     }
 
     public record ImageUploadResponse(List<ImageInfo> images) {
