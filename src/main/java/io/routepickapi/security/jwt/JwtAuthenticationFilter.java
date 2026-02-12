@@ -105,7 +105,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // 5) 토큰 유효성 검증 + 사용자 로드
             if (jwtProvider.validate(token)) {
                 Long userId = jwtProvider.getUserId(token);
-                userRepository.findByIdAndStatus(userId, UserStatus.ACTIVE).ifPresent(user -> {
+                userRepository.findById(userId).ifPresent(user -> {
+                    if (user.getStatus() == UserStatus.BLOCKED || user.getStatus() == UserStatus.DELETED) {
+                        return;
+                    }
                     AuthUser principal = new AuthUser(user.getId(), user.getEmail(),
                         user.getNickname(), user.getRole());
                     List<SimpleGrantedAuthority> authorities = new ArrayList<>();

@@ -63,8 +63,7 @@ public class PostService {
         post.setTags(req.tags());
 
         // 작성자 지정 (인증 필요)
-        User author = userRepository.findByIdAndStatus(currentUserId, UserStatus.ACTIVE)
-            .orElseThrow(() -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
+        User author = requireActiveUser(currentUserId);
         post.setAuthor(author);
 
         Post saved = postRepository.save(post);
@@ -211,6 +210,7 @@ public class PostService {
 
     @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
     public PostResponse update(Long id, PostUpdateRequest req, Long currentUserId) {
+        requireActiveUser(currentUserId);
         Post post = postRepository.findById(id)
             .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
 
@@ -266,8 +266,7 @@ public class PostService {
         }
 
         // user 존재/상태 체크
-        User user = userRepository.findByIdAndStatus(userId, UserStatus.ACTIVE)
-            .orElseThrow(() -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
+        User user = requireActiveUser(userId);
 
         Optional<PostLike> existingLike = postLikeRepository.findByPostIdAndUserId(postId, userId);
 
@@ -322,5 +321,24 @@ public class PostService {
         Post post = postRepository.findById(id)
             .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
         post.activated();
+    }
+
+    private User requireActiveUser(Long userId) {
+        if (userId == null) {
+            throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
+        }
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
+
+        if (user.getStatus() == UserStatus.PENDING) {
+            throw new CustomException(ErrorType.USER_EMAIL_NOT_VERIFIED);
+        }
+        if (user.getStatus() == UserStatus.BLOCKED) {
+            throw new CustomException(ErrorType.USER_BLOCKED);
+        }
+        if (user.getStatus() == UserStatus.DELETED) {
+            throw new CustomException(ErrorType.USER_NOT_FOUND);
+        }
+        return user;
     }
 }

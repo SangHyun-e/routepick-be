@@ -52,9 +52,7 @@ public class CommentService {
             .build();
 
         if (currentUserId != null) {
-            User author = userRepository.findByIdAndStatus(currentUserId, UserStatus.ACTIVE)
-                .orElseThrow(
-                    () -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
+            User author = requireActiveUser(currentUserId);
             comment.setAuthor(author);
         }
 
@@ -90,9 +88,7 @@ public class CommentService {
             .build();
 
         if (currentUserId != null) {
-            User author = userRepository.findByIdAndStatus(currentUserId, UserStatus.ACTIVE)
-                .orElseThrow(
-                    () -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
+            User author = requireActiveUser(currentUserId);
             reply.setAuthor(author);
         }
 
@@ -132,8 +128,7 @@ public class CommentService {
 
     @Transactional
     public CommentLikeToggleResponse toggleLike(Long postId, Long commentId, Long currentUserId) {
-        User user = userRepository.findByIdAndStatus(currentUserId, UserStatus.ACTIVE)
-            .orElseThrow(() -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
+        User user = requireActiveUser(currentUserId);
 
         Comment comment = commentRepository.findByIdAndPostIdAndStatus(
                 commentId, postId, CommentStatus.ACTIVE
@@ -219,6 +214,25 @@ public class CommentService {
 
         log.info("Comment updated: postId={}, commentId={}", postId, commentId);
         return CommentResponse.from(c); // DTO 마스킹 규칙 적용
+    }
+
+    private User requireActiveUser(Long userId) {
+        if (userId == null) {
+            throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
+        }
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
+
+        if (user.getStatus() == UserStatus.PENDING) {
+            throw new CustomException(ErrorType.USER_EMAIL_NOT_VERIFIED);
+        }
+        if (user.getStatus() == UserStatus.BLOCKED) {
+            throw new CustomException(ErrorType.USER_BLOCKED);
+        }
+        if (user.getStatus() == UserStatus.DELETED) {
+            throw new CustomException(ErrorType.USER_NOT_FOUND);
+        }
+        return user;
     }
 
 
