@@ -44,7 +44,6 @@ class PasswordResetServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         passwordResetService = new PasswordResetService(
             redisTemplate,
             userRepository,
@@ -78,6 +77,7 @@ class PasswordResetServiceTest {
         String newPassword = "RoutePick1!";
         User user = new User(email, "oldHash", "nick");
 
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(KEY_PREFIX + email)).thenReturn(code);
         when(userRepository.findByEmailAndStatus(email, UserStatus.ACTIVE))
             .thenReturn(Optional.of(user));

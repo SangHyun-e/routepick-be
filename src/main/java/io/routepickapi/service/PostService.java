@@ -14,8 +14,10 @@ import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.post.PostLike;
 import io.routepickapi.entity.post.PostStatus;
 import io.routepickapi.entity.user.User;
+import io.routepickapi.entity.user.UserRole;
 import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.repository.CommentQueryRepository;
+import io.routepickapi.repository.CommentLikeRepository;
 import io.routepickapi.repository.CommentRepository;
 import io.routepickapi.repository.PostLikeRepository;
 import io.routepickapi.repository.PostQueryRepository;
@@ -46,6 +48,7 @@ public class PostService {
     private final PostLikeRepository postLikeRepository;
     private final CommentQueryRepository commentQueryRepository;
     private final CommentRepository commentRepository;
+    private final CommentLikeRepository commentLikeRepository;
 
     public PostResponse create(PostCreateRequest req, Long currentUserId) {
         Post post = new Post(req.title(), req.content());
@@ -135,18 +138,31 @@ public class PostService {
         });
     }
 
-    public PostResponse getDetail(Long id, boolean increaseView, Long currentUserId) {
+    public PostResponse getDetail(Long id, boolean increaseView, Long currentUserId,
+        UserRole currentUserRole) {
         // 1) 존재/상태 확인 + 태그 fetch join
         Post post = postRepository.findWithTagsById(id)
             .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
 
-        if (post.getStatus() != PostStatus.ACTIVE) {
+        if (post.getStatus() == PostStatus.DELETED) {
             throw new CustomException(ErrorType.POST_NOT_FOUND);
+        }
+
+        if (post.getStatus() == PostStatus.HIDDEN) {
+            boolean isOwner = currentUserId != null && post.getAuthor() != null
+                && post.getAuthor().getId().equals(currentUserId);
+            boolean isAdmin = currentUserRole == UserRole.ADMIN;
+            if (!isOwner && !isAdmin) {
+                throw new CustomException(ErrorType.POST_NOT_FOUND);
+            }
         }
 
         // 2) 조회수 증가를 DB에서 원자적으로 처리
         if (increaseView) {
-            int updated = postRepository.incrementViewCount(id, PostStatus.ACTIVE);
+            PostStatus viewStatus = post.getStatus() == PostStatus.HIDDEN
+                ? PostStatus.HIDDEN
+                : PostStatus.ACTIVE;
+            int updated = postRepository.incrementViewCount(id, viewStatus);
             if (updated == 0) {
                 // ACTIVE 가 아닌 상태로 바뀌었을 가능성 방어
                 throw new CustomException(ErrorType.POST_NOT_FOUND);
@@ -338,6 +354,8 @@ public class PostService {
     public void hardDeleteByAdmin(Long id) {
         Post post = postRepository.findById(id)
             .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        commentLikeRepository.deleteByCommentPostId(post.getId());
+        commentRepository.deleteByPostId(post.getId());
         postRepository.delete(post);
     }
 
