@@ -3,12 +3,10 @@ package io.routepickapi.repository;
 import static io.routepickapi.entity.comment.QComment.comment;
 
 import com.querydsl.core.BooleanBuilder;
-import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import io.routepickapi.entity.comment.Comment;
 import io.routepickapi.entity.comment.CommentStatus;
-import io.routepickapi.entity.comment.QComment;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -23,13 +21,10 @@ public class CommentRepositoryImpl implements CommentRepositoryCustom {
     /**
      * 루트 댓글 조회
      * - parent == null
-     * - ACTIVE 는 항상 노출
-     * - DELETED 는 자식이 하나라도 있으면 노출
+     * - ACTIVE/DELETED 모두 노출
      */
     @Override
     public Page<Comment> findRootsForList(Long postId, Pageable pageable) {
-
-        QComment child = new QComment("child");
 
         BooleanBuilder where = new BooleanBuilder();
         where.and(comment.post.id.eq(postId));
@@ -37,20 +32,7 @@ public class CommentRepositoryImpl implements CommentRepositoryCustom {
 
         BooleanBuilder statusPolicy = new BooleanBuilder();
         statusPolicy.or(comment.status.eq(CommentStatus.ACTIVE));
-        statusPolicy.or(
-            comment.status.eq(CommentStatus.DELETED)
-                .and(
-                    JPAExpressions
-                        .selectOne()
-                        .from(child)
-                        .where(
-                            child.parent.id.eq(comment.id),
-                            child.post.id.eq(postId),
-                            child.status.in(CommentStatus.ACTIVE, CommentStatus.DELETED)
-                        )
-                        .exists()
-                )
-        );
+        statusPolicy.or(comment.status.eq(CommentStatus.DELETED));
 
         where.and(statusPolicy);
 

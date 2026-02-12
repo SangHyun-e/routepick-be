@@ -69,7 +69,8 @@ public class PostController {
         @AuthenticationPrincipal AuthUser currentUser
     ) {
         Long currentUserId = (currentUser != null) ? currentUser.id() : null;
-        return postService.getDetail(id, incView, currentUserId);
+        return postService.getDetail(id, incView, currentUserId,
+            currentUser != null ? currentUser.role() : null);
     }
 
     @Operation(summary = "게시글 검색", description = "비로그인은 isLikedByCurrentUser=null")

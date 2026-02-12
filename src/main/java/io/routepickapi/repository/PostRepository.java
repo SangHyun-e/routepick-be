@@ -2,6 +2,7 @@ package io.routepickapi.repository;
 
 import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.post.PostStatus;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,6 +21,11 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     // 지역 + 상태 필터 최신순 페이지 조회
     @EntityGraph(attributePaths = {"author"})
     Page<Post> findByRegionAndStatusOrderByCreatedAtDesc(String region, PostStatus status,
+        Pageable pageable);
+
+    // 내 게시글 목록 조회 (숨김 포함, 삭제 제외)
+    @EntityGraph(attributePaths = {"author"})
+    Page<Post> findByAuthorIdAndStatusIn(Long authorId, List<PostStatus> statuses,
         Pageable pageable);
 
     // 상세 화면: 다건 조회 시 태그까지 로딩 (N+1 방지)
