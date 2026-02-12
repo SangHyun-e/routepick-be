@@ -15,7 +15,9 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -48,6 +50,27 @@ public class AdminPostController {
     public ResponseEntity<StatusResponse> status(@PathVariable @Min(1) Long id) {
         PostStatus status = postService.findStatus(id);
         return ResponseEntity.ok(new StatusResponse(status));
+    }
+
+    @Operation(summary = "관리자 게시글 비활성화", description = "게시글 상태를 숨김 처리")
+    @PatchMapping("/{id}/hide")
+    public ResponseEntity<Void> hide(@PathVariable @Min(1) Long id) {
+        postService.hideByAdmin(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "관리자 게시글 활성화", description = "게시글 상태를 활성 처리")
+    @PatchMapping("/{id}/activate")
+    public ResponseEntity<Void> activate(@PathVariable @Min(1) Long id) {
+        postService.activateByAdmin(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "관리자 게시글 물리 삭제", description = "게시글을 DB에서 삭제")
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> hardDelete(@PathVariable @Min(1) Long id) {
+        postService.hardDeleteByAdmin(id);
+        return ResponseEntity.noContent().build();
     }
 
     private PostStatus parseStatus(String raw) {

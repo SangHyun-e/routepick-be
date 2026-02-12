@@ -323,6 +323,24 @@ public class PostService {
         post.activated();
     }
 
+    public void hideByAdmin(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        post.hide();
+    }
+
+    public void activateByAdmin(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        post.activated();
+    }
+
+    public void hardDeleteByAdmin(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        postRepository.delete(post);
+    }
+
     private User requireActiveUser(Long userId) {
         if (userId == null) {
             throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
