@@ -141,7 +141,12 @@ public class PostService {
             .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
 
         if (post.getStatus() != PostStatus.ACTIVE) {
-            throw new CustomException(ErrorType.POST_NOT_FOUND);
+            boolean isOwner =
+                currentUserId != null && post.getAuthor() != null
+                    && post.getAuthor().getId().equals(currentUserId);
+            if (post.getStatus() != PostStatus.HIDDEN || !isOwner) {
+                throw new CustomException(ErrorType.POST_NOT_FOUND);
+            }
         }
 
         // 2) 조회수 증가를 DB에서 원자적으로 처리
