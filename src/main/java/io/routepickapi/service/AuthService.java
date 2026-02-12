@@ -60,12 +60,22 @@ public class AuthService {
      */
     public IssuedTokens loginIssueTokens(LoginRequest req) {
         log.debug("Login requested (email={})", req.email());
-        // 1) ACTIVE 사용자만 허용
-        User user = userRepository.findByEmailAndStatus(req.email(), UserStatus.ACTIVE)
+        // 1) 사용자 확인 (PENDING 허용)
+        User user = userRepository.findByEmail(req.email())
             .orElseThrow(() -> {
-                log.warn("Login failed: user not found or inactive (email={})", req.email());
+                log.warn("Login failed: user not found (email={})", req.email());
                 return new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
             });
+
+        if (user.getStatus() == UserStatus.BLOCKED) {
+            log.warn("Login failed: user blocked (email={})", req.email());
+            throw new CustomException(ErrorType.USER_BLOCKED);
+        }
+
+        if (user.getStatus() == UserStatus.DELETED) {
+            log.warn("Login failed: user deleted (email={})", req.email());
+            throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
+        }
 
         // 2) 비밀번호 매칭
         if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
@@ -120,11 +130,21 @@ public class AuthService {
         }
 
         // 3) 새 Access 발급
-        User user = userRepository.findByIdAndStatus(userId, UserStatus.ACTIVE)
+        User user = userRepository.findById(userId)
             .orElseThrow(() -> {
-                log.warn("Refresh failed: user not active (userId={})", userId);
+                log.warn("Refresh failed: user not found (userId={})", userId);
                 return new CustomException(ErrorType.USER_NOT_FOUND);
             });
+
+        if (user.getStatus() == UserStatus.BLOCKED) {
+            log.warn("Refresh failed: user blocked (userId={})", userId);
+            throw new CustomException(ErrorType.USER_BLOCKED);
+        }
+
+        if (user.getStatus() == UserStatus.DELETED) {
+            log.warn("Refresh failed: user deleted (userId={})", userId);
+            throw new CustomException(ErrorType.USER_NOT_FOUND);
+        }
 
         String newAccess = jwtProvider.generateAccessToken(user.getId(), user.getEmail());
         long accessExpSec = jwtProvider.getRemainingMillis(newAccess) / 1000;

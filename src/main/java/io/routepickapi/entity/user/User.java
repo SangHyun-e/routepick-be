@@ -90,6 +90,10 @@ public class User extends BaseEntity {
     }
 
     public void delete() {
+        Long token = id != null ? id : System.currentTimeMillis();
+        setEmail("deleted-" + token + "@routepick.local");
+        setNickname("탈퇴회원" + token);
+        setPasswordHash("deleted-" + token);
         this.status = UserStatus.DELETED;
     }
 

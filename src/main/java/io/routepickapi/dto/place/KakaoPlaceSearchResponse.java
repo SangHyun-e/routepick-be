@@ -1,6 +1,6 @@
 package io.routepickapi.dto.place;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import java.util.List;
 
 public record KakaoPlaceSearchResponse(
@@ -9,23 +9,23 @@ public record KakaoPlaceSearchResponse(
 ) {
 
     public record KakaoMeta(
-        @JsonProperty("is_end") boolean isEnd,
-        @JsonProperty("pageable_count") int pageableCount,
-        @JsonProperty("total_count") int totalCount
+        @JsonAlias("is_end") boolean isEnd,
+        @JsonAlias("pageable_count") int pageableCount,
+        @JsonAlias("total_count") int totalCount
     ) {
 
     }
 
     public record KakaoPlaceDocument(
         String id,
-        @JsonProperty("place_name") String placeName,
-        @JsonProperty("category_name") String categoryName,
-        @JsonProperty("category_group_code") String categoryGroupCode,
-        @JsonProperty("category_group_name") String categoryGroupName,
+        @JsonAlias("place_name") String placeName,
+        @JsonAlias("category_name") String categoryName,
+        @JsonAlias("category_group_code") String categoryGroupCode,
+        @JsonAlias("category_group_name") String categoryGroupName,
         String phone,
-        @JsonProperty("address_name") String addressName,
-        @JsonProperty("road_address_name") String roadAddressName,
-        @JsonProperty("place_url") String placeUrl,
+        @JsonAlias("address_name") String addressName,
+        @JsonAlias("road_address_name") String roadAddressName,
+        @JsonAlias("place_url") String placeUrl,
         String x,
         String y,
         String distance

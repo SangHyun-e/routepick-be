@@ -192,7 +192,7 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "이메일 인증코드 발급", description = "PENDING 사용자에게 인증코드 발급(현재는 로그로만)")
+    @Operation(summary = "이메일 인증코드 발급", description = "PENDING 사용자에게 인증코드 발급")
     @PostMapping("/email/verify-code/send")
     public ResponseEntity<Void> sendEmailVerifyCode(
         @Valid @RequestBody EmailVerifySendRequest req) {

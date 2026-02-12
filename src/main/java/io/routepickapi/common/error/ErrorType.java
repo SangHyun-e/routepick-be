@@ -43,6 +43,8 @@ public enum ErrorType {
     USER_BLOCKED(HttpStatus.FORBIDDEN, "USER-403", "차단된 사용자입니다."),
     USER_EMAIL_EXISTS(HttpStatus.CONFLICT, "USER-409", "이미 사용 중인 이메일입니다."),
     USER_NICKNAME_EXISTS(HttpStatus.CONFLICT, "USER-410", "이미 사용 중인 닉네임입니다."),
+    USER_EMAIL_NOT_VERIFIED(HttpStatus.FORBIDDEN, "USER-412",
+        "이메일 인증이 필요합니다. 마이페이지에서 인증을 완료해주세요."),
 
     USER_EMAIL_ALREADY_VERIFIED(HttpStatus.CONFLICT, "USER-409", "이미 인증이 완료된 이메일입니다."),
 
