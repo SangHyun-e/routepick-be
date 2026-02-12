@@ -60,7 +60,7 @@ public class SmtpEmailSenderService implements EmailSenderService {
         }
         MimeMessage message = mailSender.createMimeMessage();
         try {
-            MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             helper.setTo(to);
             helper.setFrom(fromEmail);
             helper.setSubject(subject);
