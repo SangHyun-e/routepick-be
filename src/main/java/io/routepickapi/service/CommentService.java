@@ -7,6 +7,7 @@ import io.routepickapi.dto.comment.CommentLikeToggleResponse;
 import io.routepickapi.dto.comment.CommentResponse;
 import io.routepickapi.dto.comment.CommentUpdateRequest;
 import io.routepickapi.entity.comment.Comment;
+import io.routepickapi.entity.comment.CommentDeletedBy;
 import io.routepickapi.entity.comment.CommentLike;
 import io.routepickapi.entity.comment.CommentStatus;
 import io.routepickapi.entity.post.Post;
@@ -188,17 +189,16 @@ public class CommentService {
 
     @Transactional
     @PreAuthorize("@authz.isCommentOwner(#postId, #commentId) or hasRole('ADMIN')")
-    public void softDelete(Long postId, Long commentId) {
+    public void softDelete(Long postId, Long commentId, CommentDeletedBy deletedBy) {
         log.debug("Delete comment request: postId={}, commentId={}", postId, commentId);
+        Comment comment = commentRepository.findByIdAndPostIdAndStatus(
+                commentId, postId, CommentStatus.ACTIVE
+            )
+            .orElseThrow(() -> new CustomException(ErrorType.COMMENT_NOT_FOUND));
 
-        int updated = commentRepository.updateStatus(
-            postId, commentId, CommentStatus.ACTIVE, CommentStatus.DELETED
-        );
-
-        if (updated == 0) {
-            throw new CustomException(ErrorType.COMMENT_NOT_FOUND);
-        }
-        log.info("Comment soft-deleted: postId={}, commentId={}", postId, commentId);
+        comment.softDelete(deletedBy != null ? deletedBy : CommentDeletedBy.USER);
+        log.info("Comment soft-deleted: postId={}, commentId={}, deletedBy={}", postId, commentId,
+            comment.getDeletedBy());
     }
 
     @Transactional

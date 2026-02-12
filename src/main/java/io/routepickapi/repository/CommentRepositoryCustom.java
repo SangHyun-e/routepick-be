@@ -1,6 +1,7 @@
 package io.routepickapi.repository;
 
 import io.routepickapi.entity.comment.Comment;
+import io.routepickapi.entity.comment.CommentStatus;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -9,8 +10,7 @@ public interface CommentRepositoryCustom {
 
     /**
      * 루트 댓글 페이지:
-     * - ACTIVE 는 항상 노출
-     * - DELETED 라도 자식(대댓글)이 하나라도 있으면 노출
+     * - ACTIVE/DELETED 모두 노출
      * - 최신순
      */
     Page<Comment> findRootsForList(Long postId, Pageable pageable);
@@ -31,4 +31,10 @@ public interface CommentRepositoryCustom {
      * - limit 개수만 반환
      */
     List<Comment> findBestComments(Long postId, int minLikes, int limit);
+
+    /**
+     * 관리자 댓글 목록
+     * - 상태 필터 + 키워드(댓글/게시글/작성자) 검색
+     */
+    Page<Comment> findForAdmin(List<CommentStatus> statuses, String keyword, Pageable pageable);
 }
