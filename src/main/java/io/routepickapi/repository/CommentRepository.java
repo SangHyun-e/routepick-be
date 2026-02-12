@@ -3,6 +3,9 @@ package io.routepickapi.repository;
 import io.routepickapi.entity.comment.Comment;
 import io.routepickapi.entity.comment.CommentStatus;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -58,5 +61,11 @@ public interface CommentRepository extends JpaRepository<Comment, Long>, Comment
 
     // 특정 게시글 내 특정 댓글의 작성자인지 여부 판단 (postId 까지 같이 체크)
     boolean existsByIdAndPostIdAndAuthorId(Long id, Long postId, Long authorId);
+
+    // 내 댓글 목록 조회
+    @EntityGraph(attributePaths = {"post"})
+    Page<Comment> findByAuthorIdAndStatus(Long authorId, CommentStatus status, Pageable pageable);
+
+    void deleteByPostId(Long postId);
     
 }
