@@ -32,6 +32,21 @@ public class S3StorageService {
     private static final int MAX_FILES = 30;
     private static final long MAX_FILE_SIZE = 15L * 1024 * 1024;
     private static final long MAX_TOTAL_SIZE = 100L * 1024 * 1024;
+    private static final Set<String> SUPPORTED_CONTENT_TYPES = Set.of(
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp",
+        "image/gif"
+    );
+    private static final Set<String> SUPPORTED_EXTENSIONS = Set.of(
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".gif"
+    );
+    private static final String SUPPORTED_FORMAT_LABEL = "JPG, PNG, WEBP, GIF";
     private static final Pattern IMAGE_SRC_PATTERN = Pattern.compile("src\\s*=\\s*['\"]([^'\"]+)['\"]",
         Pattern.CASE_INSENSITIVE);
 
@@ -66,6 +81,10 @@ public class S3StorageService {
         for (MultipartFile file : files) {
             if (file.isEmpty()) {
                 continue;
+            }
+            if (!isSupportedFile(file)) {
+                throw new CustomException(ErrorType.COMMON_INVALID_INPUT,
+                    "지원하지 않는 이미지 형식입니다. (" + SUPPORTED_FORMAT_LABEL + ")");
             }
             if (file.getSize() > MAX_FILE_SIZE) {
                 throw new CustomException(ErrorType.COMMON_INVALID_INPUT,
@@ -138,6 +157,23 @@ public class S3StorageService {
 
     public record UploadResult(String key, String url, long size) {
 
+    }
+
+    private boolean isSupportedFile(MultipartFile file) {
+        String contentType = file.getContentType();
+        if (contentType != null && SUPPORTED_CONTENT_TYPES.contains(contentType.toLowerCase(Locale.ROOT))) {
+            return true;
+        }
+        String filename = file.getOriginalFilename();
+        if (filename == null || filename.isBlank()) {
+            return false;
+        }
+        int dot = filename.lastIndexOf('.');
+        if (dot < 0 || dot == filename.length() - 1) {
+            return false;
+        }
+        String ext = filename.substring(dot).toLowerCase(Locale.ROOT);
+        return SUPPORTED_EXTENSIONS.contains(ext);
     }
 
     private String normalizeKey(String key) {
