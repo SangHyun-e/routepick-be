@@ -7,6 +7,7 @@ import io.routepickapi.dto.auth.EmailVerifyConfirmRequest;
 import io.routepickapi.dto.auth.EmailVerifySendRequest;
 import io.routepickapi.dto.auth.KakaoAuthorizeUrlResponse;
 import io.routepickapi.dto.auth.KakaoLoginRequest;
+import io.routepickapi.dto.auth.KakaoLogoutUrlResponse;
 import io.routepickapi.dto.auth.LoginRequest;
 import io.routepickapi.dto.auth.LoginResponse;
 import io.routepickapi.dto.auth.PasswordResetConfirmRequest;
@@ -126,6 +127,13 @@ public class AuthController {
     public ResponseEntity<LoginResponse> kakaoLogin(@Valid @RequestBody KakaoLoginRequest req) {
         IssuedTokens tokens = kakaoOAuthService.login(req.code());
         return okWithRefresh(tokens);
+    }
+
+    @Operation(summary = "카카오 OAuth 로그아웃 URL", description = "카카오 로그아웃 URL 반환")
+    @GetMapping("/oauth/kakao/logout-url")
+    public ResponseEntity<KakaoLogoutUrlResponse> kakaoLogoutUrl() {
+        String logoutUrl = kakaoOAuthService.buildLogoutUrl();
+        return ResponseEntity.ok(new KakaoLogoutUrlResponse(logoutUrl));
     }
 
     @Operation(summary = "토큰 재발급", description = "HttpOnly 쿠키의 refresh 토큰으로 access 토큰 재발급")

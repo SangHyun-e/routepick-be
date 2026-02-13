@@ -47,10 +47,22 @@ public class User extends BaseEntity {
     @Column(nullable = false, length = 16)
     private UserRole role = UserRole.USER;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "auth_provider", nullable = false, length = 20)
+    private UserAuthProvider authProvider = UserAuthProvider.LOCAL;
+
+    @Column(name = "profile_complete", nullable = false)
+    private boolean profileComplete = true;
+
     public User(String email, String passwordHash, String nickname) {
+        this(email, passwordHash, nickname, UserAuthProvider.LOCAL);
+    }
+
+    public User(String email, String passwordHash, String nickname, UserAuthProvider authProvider) {
         setEmail(email);
         setPasswordHash(passwordHash);
         setNickname(nickname);
+        setAuthProvider(authProvider);
     }
 
     public void setEmail(String email) {
@@ -61,7 +73,11 @@ public class User extends BaseEntity {
     }
 
     public void setPasswordHash(String passwordHash) {
-        if (passwordHash == null || passwordHash.isBlank() || passwordHash.length() > 255) {
+        if (passwordHash == null || passwordHash.isBlank()) {
+            this.passwordHash = null;
+            return;
+        }
+        if (passwordHash.length() > 255) {
             throw new IllegalArgumentException("invalid passwordHash");
         }
         this.passwordHash = passwordHash;
@@ -79,6 +95,21 @@ public class User extends BaseEntity {
             throw new IllegalArgumentException("invalid role");
         }
         this.role = role;
+    }
+
+    public void setAuthProvider(UserAuthProvider authProvider) {
+        if (authProvider == null) {
+            throw new IllegalArgumentException("invalid authProvider");
+        }
+        this.authProvider = authProvider;
+    }
+
+    public void markProfileIncomplete() {
+        this.profileComplete = false;
+    }
+
+    public void markProfileComplete() {
+        this.profileComplete = true;
     }
 
     public void block() {

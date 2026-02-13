@@ -5,6 +5,7 @@ import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.comment.MyCommentResponse;
 import io.routepickapi.dto.post.PostListItemResponse;
 import io.routepickapi.dto.user.MeResponse;
+import io.routepickapi.dto.user.NicknameUpdateRequest;
 import io.routepickapi.dto.user.PasswordVerifyRequest;
 import io.routepickapi.security.AuthUser;
 import io.routepickapi.service.AuthService;
@@ -27,6 +28,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -129,6 +131,24 @@ public class UserController {
         return ResponseEntity.noContent()
             .header(HttpHeaders.SET_COOKIE, clear.toString())
             .build();
+    }
+
+    @Operation(
+        summary = "닉네임 변경",
+        description = "현재 로그인 사용자의 닉네임 변경",
+        security = {@SecurityRequirement(name = "bearerAuth")}
+    )
+    @PatchMapping("/me/nickname")
+    public ResponseEntity<MeResponse> updateNickname(
+        @AuthenticationPrincipal AuthUser currentUser,
+        @Valid @RequestBody NicknameUpdateRequest req
+    ) {
+        if (currentUser == null) {
+            throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
+        }
+        log.info("PATCH /users/me/nickname - userId={}", currentUser.id());
+        MeResponse res = userService.updateNickname(currentUser.id(), req.nickname());
+        return ResponseEntity.ok(res);
     }
 
     @Operation(
