@@ -25,6 +25,7 @@ public enum ErrorType {
     AUTH_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "AUTH-403", "만료된 토큰입니다."),
     AUTH_OAUTH_FAILED(HttpStatus.UNAUTHORIZED, "AUTH-405", "OAuth 인증에 실패했습니다."),
     AUTH_OAUTH_EMAIL_NOT_VERIFIED(HttpStatus.FORBIDDEN, "AUTH-406", "카카오 이메일 인증이 필요합니다."),
+    AUTH_OAUTH_UNLINK_FAILED(HttpStatus.BAD_GATEWAY, "AUTH-407", "카카오 연결 해제에 실패했습니다."),
 
     /* === 이메일 인증 코드 === */
     AUTH_EMAIL_VERIFY_CODE_INVALID(HttpStatus.BAD_REQUEST, "AUTH-410", "인증코드가 올바르지 않습니다."),

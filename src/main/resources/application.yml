@@ -31,6 +31,7 @@ kakao:
     client-secret: ${KAKAO_OAUTH_CLIENT_SECRET:}
     redirect-uri: ${KAKAO_OAUTH_REDIRECT_URI:}
     logout-redirect-uri: ${KAKAO_OAUTH_LOGOUT_REDIRECT_URI:}
+    admin-key: ${KAKAO_ADMIN_KEY:}
 
 aws:
   region: ${AWS_REGION:ap-northeast-2}

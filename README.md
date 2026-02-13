@@ -50,6 +50,7 @@ io.routepickapi
 - `KAKAO_OAUTH_CLIENT_SECRET`: Kakao OAuth Client Secret (사용 시)
 - `KAKAO_OAUTH_REDIRECT_URI`: Kakao OAuth Redirect URI
 - `KAKAO_OAUTH_LOGOUT_REDIRECT_URI`: Kakao OAuth Logout Redirect URI
+- `KAKAO_ADMIN_KEY`: Kakao Admin Key (연결 해제용)
 - `AWS_REGION`: AWS 리전 (기본값 `ap-northeast-2`)
 - `AWS_S3_BUCKET`: 이미지 업로드용 S3 버킷 이름
 - `SMTP_HOST`: SMTP 호스트 (기본값 `smtp.gmail.com`)

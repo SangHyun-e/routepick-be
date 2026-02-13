@@ -53,6 +53,9 @@ public class KakaoOAuthService {
     @Value("${kakao.oauth.logout-redirect-uri:}")
     private String logoutRedirectUri;
 
+    @Value("${kakao.oauth.admin-key:}")
+    private String adminKey;
+
     public String buildAuthorizeUrl(String state) {
         validateConfig();
 
@@ -124,6 +127,47 @@ public class KakaoOAuthService {
         return authService.issueTokensForUser(user);
     }
 
+    public void unlinkIfNeeded(Long userId) {
+        if (userId == null) {
+            return;
+        }
+
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new CustomException(ErrorType.USER_NOT_FOUND));
+
+        if (user.getAuthProvider() != UserAuthProvider.KAKAO) {
+            return;
+        }
+
+        UserIdentity identity = userIdentityRepository
+            .findByUserIdAndProvider(userId, UserIdentityProvider.KAKAO)
+            .orElse(null);
+
+        if (identity == null) {
+            log.warn("Kakao unlink skipped: identity not found (userId={})", userId);
+            return;
+        }
+
+        validateUnlinkConfig();
+
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("target_id_type", "user_id");
+        form.add("target_id", identity.getProviderUserId());
+
+        try {
+            apiClient.post()
+                .uri("/v1/user/unlink")
+                .header(HttpHeaders.AUTHORIZATION, "KakaoAK " + adminKey)
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body(form)
+                .retrieve()
+                .body(String.class);
+        } catch (RestClientException ex) {
+            log.warn("Kakao unlink request failed (userId={})", userId, ex);
+            throw new CustomException(ErrorType.AUTH_OAUTH_UNLINK_FAILED);
+        }
+    }
+
     private KakaoTokenResponse requestToken(String code) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "authorization_code");
@@ -170,6 +214,12 @@ public class KakaoOAuthService {
         if (clientId == null || clientId.isBlank() || logoutRedirectUri == null
             || logoutRedirectUri.isBlank()) {
             throw new CustomException(ErrorType.COMMON_INTERNAL, "카카오 OAuth 로그아웃 설정이 필요합니다.");
+        }
+    }
+
+    private void validateUnlinkConfig() {
+        if (adminKey == null || adminKey.isBlank()) {
+            throw new CustomException(ErrorType.COMMON_INTERNAL, "카카오 Admin 키 설정이 필요합니다.");
         }
     }
 
