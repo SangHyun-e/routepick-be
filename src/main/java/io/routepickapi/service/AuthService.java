@@ -67,15 +67,7 @@ public class AuthService {
                 return new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
             });
 
-        if (user.getStatus() == UserStatus.BLOCKED) {
-            log.warn("Login failed: user blocked (email={})", req.email());
-            throw new CustomException(ErrorType.USER_BLOCKED);
-        }
-
-        if (user.getStatus() == UserStatus.DELETED) {
-            log.warn("Login failed: user deleted (email={})", req.email());
-            throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
-        }
+        validateLoginableUser(user);
 
         // 2) 비밀번호 매칭
         if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
@@ -83,6 +75,27 @@ public class AuthService {
             throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
         }
 
+        return issueTokens(user);
+    }
+
+    public IssuedTokens issueTokensForUser(User user) {
+        validateLoginableUser(user);
+        return issueTokens(user);
+    }
+
+    public void validateLoginableUser(User user) {
+        if (user.getStatus() == UserStatus.BLOCKED) {
+            log.warn("Login failed: user blocked (email={})", user.getEmail());
+            throw new CustomException(ErrorType.USER_BLOCKED);
+        }
+
+        if (user.getStatus() == UserStatus.DELETED) {
+            log.warn("Login failed: user deleted (email={})", user.getEmail());
+            throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
+        }
+    }
+
+    private IssuedTokens issueTokens(User user) {
         // 3) 액세스 토큰 발급
         String accessToken = jwtProvider.generateAccessToken(user.getId(), user.getEmail());
         long accessExpiresInSec = jwtProvider.getRemainingMillis(accessToken) / 1000;

@@ -5,6 +5,8 @@ import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.IssuedTokens;
 import io.routepickapi.dto.auth.EmailVerifyConfirmRequest;
 import io.routepickapi.dto.auth.EmailVerifySendRequest;
+import io.routepickapi.dto.auth.KakaoAuthorizeUrlResponse;
+import io.routepickapi.dto.auth.KakaoLoginRequest;
 import io.routepickapi.dto.auth.LoginRequest;
 import io.routepickapi.dto.auth.LoginResponse;
 import io.routepickapi.dto.auth.PasswordResetConfirmRequest;
@@ -15,6 +17,7 @@ import io.routepickapi.dto.auth.SignUpResponse;
 import io.routepickapi.security.AuthUser;
 import io.routepickapi.service.AuthService;
 import io.routepickapi.service.EmailVerificationService;
+import io.routepickapi.service.KakaoOAuthService;
 import io.routepickapi.service.PasswordResetService;
 import io.routepickapi.service.SessionService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,6 +42,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @Slf4j
@@ -53,6 +57,7 @@ public class AuthController {
     private final SessionService sessionService;
     private final EmailVerificationService emailVerificationService;
     private final PasswordResetService passwordResetService;
+    private final KakaoOAuthService kakaoOAuthService;
 
     // 공통 로직 통합 (refresh 쿠키 생성)
     private ResponseCookie buildRefreshCookie(String value, long maxAgeSec) {
@@ -104,6 +109,22 @@ public class AuthController {
         log.debug("POST /auth/login - request received (email={})", req.email());
         IssuedTokens tokens = authService.loginIssueTokens(req);
         log.info("Login Success (email={})", req.email());
+        return okWithRefresh(tokens);
+    }
+
+    @Operation(summary = "카카오 OAuth 인증 URL", description = "카카오 로그인 인증 URL 반환")
+    @GetMapping("/oauth/kakao/authorize-url")
+    public ResponseEntity<KakaoAuthorizeUrlResponse> kakaoAuthorizeUrl(
+        @RequestParam(value = "state", required = false) String state
+    ) {
+        String authorizeUrl = kakaoOAuthService.buildAuthorizeUrl(state);
+        return ResponseEntity.ok(new KakaoAuthorizeUrlResponse(authorizeUrl));
+    }
+
+    @Operation(summary = "카카오 OAuth 로그인", description = "카카오 인가 코드로 로그인/연동 처리")
+    @PostMapping("/oauth/kakao/login")
+    public ResponseEntity<LoginResponse> kakaoLogin(@Valid @RequestBody KakaoLoginRequest req) {
+        IssuedTokens tokens = kakaoOAuthService.login(req.code());
         return okWithRefresh(tokens);
     }
 

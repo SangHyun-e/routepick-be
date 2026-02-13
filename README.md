@@ -46,6 +46,9 @@ io.routepickapi
 - `JWT_SECRET`: JWT 서명 키 (필수)
 - `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NICKNAME`: 서버 시작 시 관리자 계정 시드 값 (미설정 시 생성 안 함)
 - `KAKAO_REST_API_KEY`: Kakao Local Search REST API 키
+- `KAKAO_OAUTH_CLIENT_ID`: Kakao OAuth Client ID (REST API 키)
+- `KAKAO_OAUTH_CLIENT_SECRET`: Kakao OAuth Client Secret (사용 시)
+- `KAKAO_OAUTH_REDIRECT_URI`: Kakao OAuth Redirect URI
 - `AWS_REGION`: AWS 리전 (기본값 `ap-northeast-2`)
 - `AWS_S3_BUCKET`: 이미지 업로드용 S3 버킷 이름
 - `SMTP_HOST`: SMTP 호스트 (기본값 `smtp.gmail.com`)
