@@ -9,6 +9,7 @@ import io.routepickapi.dto.user.NicknameUpdateRequest;
 import io.routepickapi.dto.user.PasswordVerifyRequest;
 import io.routepickapi.security.AuthUser;
 import io.routepickapi.service.AuthService;
+import io.routepickapi.service.KakaoOAuthService;
 import io.routepickapi.service.UserActivityService;
 import io.routepickapi.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -45,6 +46,7 @@ public class UserController {
     private final UserService userService;
     private final AuthService authService;
     private final UserActivityService userActivityService;
+    private final KakaoOAuthService kakaoOAuthService;
 
     /**
      * 내 정보 조회
@@ -117,6 +119,7 @@ public class UserController {
             throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
         }
         log.info("DELETE /users/me - userId={}", currentUser.id());
+        kakaoOAuthService.unlinkIfNeeded(currentUser.id());
         userService.withdraw(currentUser.id());
         authService.logoutAll(authHeader, currentUser.id());
 
