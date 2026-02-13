@@ -15,7 +15,6 @@ import io.routepickapi.repository.UserRepository;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -126,19 +125,26 @@ public class KakaoOAuthService {
 
         authService.validateLoginableUser(user);
 
-        UserIdentity identity = new UserIdentity(user, UserIdentityProvider.KAKAO, providerUserId,
-            email);
+        int inserted = userIdentityRepository.insertIgnore(
+            user.getId(),
+            UserIdentityProvider.KAKAO.name(),
+            providerUserId,
+            email
+        );
 
-        try {
-            userIdentityRepository.save(identity);
-        } catch (DataIntegrityViolationException ex) {
+        if (inserted == 0) {
             Optional<UserIdentity> duplicate = userIdentityRepository
                 .findByProviderAndProviderUserId(UserIdentityProvider.KAKAO, providerUserId);
             if (duplicate.isPresent()) {
                 User duplicateUser = duplicate.get().getUser();
                 if (duplicateUser.getStatus() == UserStatus.DELETED) {
                     userIdentityRepository.delete(duplicate.get());
-                    userIdentityRepository.save(identity);
+                    userIdentityRepository.insertIgnore(
+                        user.getId(),
+                        UserIdentityProvider.KAKAO.name(),
+                        providerUserId,
+                        email
+                    );
                 } else {
                     return authService.issueTokensForUser(duplicateUser);
                 }
