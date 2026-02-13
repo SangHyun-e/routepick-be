@@ -13,6 +13,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -47,12 +48,39 @@ public class UserIdentity extends BaseEntity {
     @Column(length = 255)
     private String email;
 
+    @Column(name = "access_token", length = 512)
+    private String accessToken;
+
+    @Column(name = "refresh_token", length = 512)
+    private String refreshToken;
+
+    @Column(name = "access_token_expires_at")
+    private LocalDateTime accessTokenExpiresAt;
+
+    @Column(name = "refresh_token_expires_at")
+    private LocalDateTime refreshTokenExpiresAt;
+
     public UserIdentity(User user, UserIdentityProvider provider, String providerUserId,
         String email) {
         setUser(user);
         setProvider(provider);
         setProviderUserId(providerUserId);
+        setEmail(email);
+    }
+
+    public void setEmail(String email) {
+        if (email != null && email.length() > 255) {
+            throw new IllegalArgumentException("invalid email");
+        }
         this.email = email;
+    }
+
+    public void updateTokens(String accessToken, LocalDateTime accessTokenExpiresAt,
+        String refreshToken, LocalDateTime refreshTokenExpiresAt) {
+        this.accessToken = accessToken;
+        this.accessTokenExpiresAt = accessTokenExpiresAt;
+        this.refreshToken = refreshToken;
+        this.refreshTokenExpiresAt = refreshTokenExpiresAt;
     }
 
     public void setUser(User user) {

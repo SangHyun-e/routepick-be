@@ -12,16 +12,22 @@ import io.routepickapi.entity.user.UserIdentityProvider;
 import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.repository.UserIdentityRepository;
 import io.routepickapi.repository.UserRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -42,6 +48,9 @@ public class KakaoOAuthService {
     private final UserIdentityRepository userIdentityRepository;
     private final AuthService authService;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     @Value("${kakao.oauth.client-id:}")
     private String clientId;
 
@@ -53,9 +62,6 @@ public class KakaoOAuthService {
 
     @Value("${kakao.oauth.logout-redirect-uri:}")
     private String logoutRedirectUri;
-
-    @Value("${kakao.oauth.admin-key:}")
-    private String adminKey;
 
     public String buildAuthorizeUrl(String state) {
         validateConfig();
@@ -105,12 +111,14 @@ public class KakaoOAuthService {
         String providerUserId = String.valueOf(userResponse.id());
         Optional<UserIdentity> existing = userIdentityRepository
             .findByProviderAndProviderUserId(UserIdentityProvider.KAKAO, providerUserId);
+        LocalDateTime now = LocalDateTime.now();
 
         if (existing.isPresent()) {
-            User linkedUser = existing.get().getUser();
-            if (linkedUser.getStatus() == UserStatus.DELETED) {
-                userIdentityRepository.delete(existing.get());
-            } else {
+            UserIdentity identity = existing.get();
+            User linkedUser = identity.getUser();
+            if (linkedUser.getStatus() != UserStatus.DELETED) {
+                applyTokens(identity, tokenResponse, now);
+                userIdentityRepository.save(identity);
                 return authService.issueTokensForUser(linkedUser);
             }
         }
@@ -120,32 +128,51 @@ public class KakaoOAuthService {
             throw new CustomException(ErrorType.AUTH_OAUTH_FAILED, "카카오 이메일 정보가 없습니다.");
         }
 
-        User user = userRepository.findByEmail(email)
-            .orElseGet(() -> createNewUser(email, providerUserId));
+        Optional<User> existingUser = userRepository.findByEmail(email);
+        boolean createdNewUser = false;
+        User user;
+        if (existingUser.isPresent()) {
+            user = existingUser.get();
+        } else {
+            user = createNewUser(email, providerUserId);
+            createdNewUser = true;
+        }
 
         authService.validateLoginableUser(user);
 
-        int inserted = userIdentityRepository.insertIgnore(
-            user.getId(),
-            UserIdentityProvider.KAKAO.name(),
-            providerUserId,
-            email
-        );
+        if (existing.isPresent()) {
+            UserIdentity identity = existing.get();
+            identity.setUser(user);
+            identity.setEmail(email);
+            applyTokens(identity, tokenResponse, now);
+            userIdentityRepository.save(identity);
+            return authService.issueTokensForUser(user);
+        }
 
-        if (inserted == 0) {
+        UserIdentity identity = new UserIdentity(user, UserIdentityProvider.KAKAO, providerUserId,
+            email);
+        applyTokens(identity, tokenResponse, now);
+
+        try {
+            userIdentityRepository.saveAndFlush(identity);
+        } catch (DataIntegrityViolationException ex) {
+            entityManager.clear();
             Optional<UserIdentity> duplicate = userIdentityRepository
                 .findByProviderAndProviderUserId(UserIdentityProvider.KAKAO, providerUserId);
             if (duplicate.isPresent()) {
-                User duplicateUser = duplicate.get().getUser();
+                UserIdentity duplicateIdentity = duplicate.get();
+                User duplicateUser = duplicateIdentity.getUser();
                 if (duplicateUser.getStatus() == UserStatus.DELETED) {
-                    userIdentityRepository.delete(duplicate.get());
-                    userIdentityRepository.insertIgnore(
-                        user.getId(),
-                        UserIdentityProvider.KAKAO.name(),
-                        providerUserId,
-                        email
-                    );
+                    duplicateIdentity.setUser(user);
+                    duplicateIdentity.setEmail(email);
+                    applyTokens(duplicateIdentity, tokenResponse, now);
+                    userIdentityRepository.save(duplicateIdentity);
                 } else {
+                    applyTokens(duplicateIdentity, tokenResponse, now);
+                    userIdentityRepository.save(duplicateIdentity);
+                    if (createdNewUser) {
+                        userRepository.delete(user);
+                    }
                     return authService.issueTokensForUser(duplicateUser);
                 }
             } else {
@@ -179,19 +206,25 @@ public class KakaoOAuthService {
 
         validateUnlinkConfig();
 
-        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        form.add("target_id_type", "user_id");
-        form.add("target_id", identity.getProviderUserId());
+        String accessToken = resolveAccessToken(identity);
 
         try {
             apiClient.post()
                 .uri("/v1/user/unlink")
-                .header(HttpHeaders.AUTHORIZATION, "KakaoAK " + adminKey)
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(form)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .retrieve()
                 .body(String.class);
             userIdentityRepository.delete(identity);
+        } catch (HttpClientErrorException ex) {
+            String body = ex.getResponseBodyAsString();
+            if (body != null
+                && (body.contains("NotRegisteredUserException") || body.contains("\"code\":-101"))) {
+                log.info("Kakao unlink skipped (already unlinked) (userId={})", userId);
+                userIdentityRepository.delete(identity);
+                return;
+            }
+            log.warn("Kakao unlink request failed (userId={})", userId, ex);
+            throw new CustomException(ErrorType.AUTH_OAUTH_UNLINK_FAILED);
         } catch (RestClientException ex) {
             log.warn("Kakao unlink request failed (userId={})", userId, ex);
             throw new CustomException(ErrorType.AUTH_OAUTH_UNLINK_FAILED);
@@ -218,6 +251,28 @@ public class KakaoOAuthService {
         } catch (RestClientException ex) {
             log.warn("Kakao token request failed", ex);
             throw new CustomException(ErrorType.AUTH_OAUTH_FAILED, "카카오 토큰 발급에 실패했습니다.");
+        }
+    }
+
+    private KakaoTokenResponse refreshAccessToken(String refreshToken) {
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("grant_type", "refresh_token");
+        form.add("client_id", clientId);
+        form.add("refresh_token", refreshToken);
+        if (clientSecret != null && !clientSecret.isBlank()) {
+            form.add("client_secret", clientSecret);
+        }
+
+        try {
+            return authClient.post()
+                .uri("/oauth/token")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body(form)
+                .retrieve()
+                .body(KakaoTokenResponse.class);
+        } catch (RestClientException ex) {
+            log.warn("Kakao refresh token request failed", ex);
+            throw new CustomException(ErrorType.AUTH_OAUTH_UNLINK_FAILED, "카카오 토큰 갱신에 실패했습니다.");
         }
     }
 
@@ -248,8 +303,8 @@ public class KakaoOAuthService {
     }
 
     private void validateUnlinkConfig() {
-        if (adminKey == null || adminKey.isBlank()) {
-            throw new CustomException(ErrorType.COMMON_INTERNAL, "카카오 Admin 키 설정이 필요합니다.");
+        if (clientId == null || clientId.isBlank()) {
+            throw new CustomException(ErrorType.COMMON_INTERNAL, "카카오 OAuth 설정이 필요합니다.");
         }
     }
 
@@ -265,6 +320,42 @@ public class KakaoOAuthService {
             throw new CustomException(ErrorType.AUTH_OAUTH_EMAIL_NOT_VERIFIED);
         }
         return account.email();
+    }
+
+    private void applyTokens(UserIdentity identity, KakaoTokenResponse tokenResponse,
+        LocalDateTime now) {
+        LocalDateTime accessExpiresAt = tokenResponse.expiresIn() != null
+            ? now.plusSeconds(tokenResponse.expiresIn())
+            : null;
+        LocalDateTime refreshExpiresAt = tokenResponse.refreshTokenExpiresIn() != null
+            ? now.plusSeconds(tokenResponse.refreshTokenExpiresIn())
+            : identity.getRefreshTokenExpiresAt();
+        String refreshToken = tokenResponse.refreshToken() != null
+            ? tokenResponse.refreshToken()
+            : identity.getRefreshToken();
+
+        identity.updateTokens(tokenResponse.accessToken(), accessExpiresAt, refreshToken,
+            refreshExpiresAt);
+    }
+
+    private String resolveAccessToken(UserIdentity identity) {
+        LocalDateTime now = LocalDateTime.now();
+        if (identity.getAccessToken() != null && identity.getAccessTokenExpiresAt() != null) {
+            if (identity.getAccessTokenExpiresAt().isAfter(now.plus(30, ChronoUnit.SECONDS))) {
+                return identity.getAccessToken();
+            }
+        }
+
+        String refreshToken = identity.getRefreshToken();
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new CustomException(ErrorType.AUTH_OAUTH_UNLINK_FAILED,
+                "카카오 토큰이 만료되었습니다. 다시 로그인 후 탈퇴해주세요.");
+        }
+
+        KakaoTokenResponse refreshed = refreshAccessToken(refreshToken);
+        applyTokens(identity, refreshed, now);
+        userIdentityRepository.save(identity);
+        return refreshed.accessToken();
     }
 
     private User createNewUser(String email, String providerUserId) {
