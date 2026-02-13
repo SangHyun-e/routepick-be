@@ -9,11 +9,13 @@ import io.routepickapi.entity.user.User;
 import io.routepickapi.entity.user.UserAuthProvider;
 import io.routepickapi.entity.user.UserIdentity;
 import io.routepickapi.entity.user.UserIdentityProvider;
+import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.repository.UserIdentityRepository;
 import io.routepickapi.repository.UserRepository;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -107,7 +109,11 @@ public class KakaoOAuthService {
 
         if (existing.isPresent()) {
             User linkedUser = existing.get().getUser();
-            return authService.issueTokensForUser(linkedUser);
+            if (linkedUser.getStatus() == UserStatus.DELETED) {
+                userIdentityRepository.delete(existing.get());
+            } else {
+                return authService.issueTokensForUser(linkedUser);
+            }
         }
 
         String email = extractVerifiedEmail(userResponse);
@@ -122,7 +128,24 @@ public class KakaoOAuthService {
 
         UserIdentity identity = new UserIdentity(user, UserIdentityProvider.KAKAO, providerUserId,
             email);
-        userIdentityRepository.save(identity);
+
+        try {
+            userIdentityRepository.save(identity);
+        } catch (DataIntegrityViolationException ex) {
+            Optional<UserIdentity> duplicate = userIdentityRepository
+                .findByProviderAndProviderUserId(UserIdentityProvider.KAKAO, providerUserId);
+            if (duplicate.isPresent()) {
+                User duplicateUser = duplicate.get().getUser();
+                if (duplicateUser.getStatus() == UserStatus.DELETED) {
+                    userIdentityRepository.delete(duplicate.get());
+                    userIdentityRepository.save(identity);
+                } else {
+                    return authService.issueTokensForUser(duplicateUser);
+                }
+            } else {
+                throw new CustomException(ErrorType.AUTH_OAUTH_FAILED, "카카오 계정 연동에 실패했습니다.");
+            }
+        }
 
         return authService.issueTokensForUser(user);
     }
@@ -162,6 +185,7 @@ public class KakaoOAuthService {
                 .body(form)
                 .retrieve()
                 .body(String.class);
+            userIdentityRepository.delete(identity);
         } catch (RestClientException ex) {
             log.warn("Kakao unlink request failed (userId={})", userId, ex);
             throw new CustomException(ErrorType.AUTH_OAUTH_UNLINK_FAILED);
