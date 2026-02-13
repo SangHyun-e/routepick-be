@@ -70,6 +70,11 @@ public class AuthService {
         validateLoginableUser(user);
 
         // 2) 비밀번호 매칭
+        if (user.getPasswordHash() == null) {
+            log.warn("Login failed: password not set (email={})", req.email());
+            throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
+        }
+
         if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
             log.warn("Login failed: wrong password (email={})", req.email());
             throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);

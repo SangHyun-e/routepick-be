@@ -6,18 +6,17 @@ import io.routepickapi.dto.IssuedTokens;
 import io.routepickapi.dto.auth.kakao.KakaoTokenResponse;
 import io.routepickapi.dto.auth.kakao.KakaoUserResponse;
 import io.routepickapi.entity.user.User;
+import io.routepickapi.entity.user.UserAuthProvider;
 import io.routepickapi.entity.user.UserIdentity;
 import io.routepickapi.entity.user.UserIdentityProvider;
 import io.routepickapi.repository.UserIdentityRepository;
 import io.routepickapi.repository.UserRepository;
 import java.util.Optional;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
@@ -41,7 +40,6 @@ public class KakaoOAuthService {
     private final UserRepository userRepository;
     private final UserIdentityRepository userIdentityRepository;
     private final AuthService authService;
-    private final PasswordEncoder passwordEncoder;
 
     @Value("${kakao.oauth.client-id:}")
     private String clientId;
@@ -51,6 +49,9 @@ public class KakaoOAuthService {
 
     @Value("${kakao.oauth.redirect-uri:}")
     private String redirectUri;
+
+    @Value("${kakao.oauth.logout-redirect-uri:}")
+    private String logoutRedirectUri;
 
     public String buildAuthorizeUrl(String state) {
         validateConfig();
@@ -66,6 +67,17 @@ public class KakaoOAuthService {
         }
 
         return builder.build(true).toUriString();
+    }
+
+    public String buildLogoutUrl() {
+        validateLogoutConfig();
+
+        return UriComponentsBuilder
+            .fromHttpUrl(AUTH_BASE_URL + "/oauth/logout")
+            .queryParam("client_id", clientId)
+            .queryParam("logout_redirect_uri", logoutRedirectUri)
+            .build(true)
+            .toUriString();
     }
 
     public IssuedTokens login(String code) {
@@ -95,7 +107,7 @@ public class KakaoOAuthService {
             return authService.issueTokensForUser(linkedUser);
         }
 
-        String email = extractEmail(userResponse);
+        String email = extractVerifiedEmail(userResponse);
         if (email == null || email.isBlank()) {
             throw new CustomException(ErrorType.AUTH_OAUTH_FAILED, "카카오 이메일 정보가 없습니다.");
         }
@@ -154,17 +166,31 @@ public class KakaoOAuthService {
         }
     }
 
-    private String extractEmail(KakaoUserResponse response) {
+    private void validateLogoutConfig() {
+        if (clientId == null || clientId.isBlank() || logoutRedirectUri == null
+            || logoutRedirectUri.isBlank()) {
+            throw new CustomException(ErrorType.COMMON_INTERNAL, "카카오 OAuth 로그아웃 설정이 필요합니다.");
+        }
+    }
+
+    private String extractVerifiedEmail(KakaoUserResponse response) {
         if (response.kakaoAccount() == null) {
             return null;
         }
-        return response.kakaoAccount().email();
+
+        KakaoUserResponse.KakaoAccount account = response.kakaoAccount();
+        boolean valid = Boolean.TRUE.equals(account.isEmailValid());
+        boolean verified = Boolean.TRUE.equals(account.isEmailVerified());
+        if (!valid || !verified) {
+            throw new CustomException(ErrorType.AUTH_OAUTH_EMAIL_NOT_VERIFIED);
+        }
+        return account.email();
     }
 
     private User createNewUser(String email, String providerUserId) {
         String nickname = buildUniqueNickname(providerUserId);
-        String password = passwordEncoder.encode(UUID.randomUUID().toString());
-        User user = new User(email, password, nickname);
+        User user = new User(email, null, nickname, UserAuthProvider.KAKAO);
+        user.markProfileIncomplete();
         user.activate();
         return userRepository.save(user);
     }

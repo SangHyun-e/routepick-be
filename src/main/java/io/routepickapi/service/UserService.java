@@ -61,9 +61,33 @@ public class UserService {
             throw new CustomException(ErrorType.USER_NOT_FOUND);
         }
 
-        if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+        if (user.getPasswordHash() == null
+            || !passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
             throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS, "비밀번호가 올바르지 않습니다.");
         }
+    }
+
+    @Transactional
+    public MeResponse updateNickname(Long userId, String nickname) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new CustomException(ErrorType.USER_NOT_FOUND));
+
+        if (user.getStatus() == UserStatus.BLOCKED) {
+            throw new CustomException(ErrorType.USER_BLOCKED);
+        }
+
+        if (user.getStatus() == UserStatus.DELETED) {
+            throw new CustomException(ErrorType.USER_NOT_FOUND);
+        }
+
+        if (!user.getNickname().equals(nickname) && userRepository.existsByNickname(nickname)) {
+            throw new CustomException(ErrorType.USER_NICKNAME_EXISTS);
+        }
+
+        user.setNickname(nickname);
+        user.markProfileComplete();
+
+        return MeResponse.from(user);
     }
 
 }

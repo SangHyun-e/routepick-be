@@ -1,6 +1,7 @@
 package io.routepickapi.dto.user;
 
 import io.routepickapi.entity.user.User;
+import io.routepickapi.entity.user.UserAuthProvider;
 import io.routepickapi.entity.user.UserRole;
 import io.routepickapi.entity.user.UserStatus;
 import java.time.LocalDateTime;
@@ -15,6 +16,8 @@ public record MeResponse(
     String nickname,
     UserRole role,
     UserStatus status,
+    UserAuthProvider authProvider,
+    boolean profileComplete,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {
@@ -27,6 +30,8 @@ public record MeResponse(
             u.getNickname(),
             u.getRole(),
             u.getStatus(),
+            u.getAuthProvider(),
+            u.isProfileComplete(),
             u.getCreatedAt(),
             u.getUpdatedAt()
         );
