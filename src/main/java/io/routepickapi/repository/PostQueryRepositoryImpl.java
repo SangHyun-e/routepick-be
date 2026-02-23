@@ -88,20 +88,21 @@ public class PostQueryRepositoryImpl implements PostQueryRepository {
 
     /**
      * 정렬 화이트리스트 매핑
-     * - 허용: createdAt, likeCount, viewCount -미지정/빈 정렬이면 createdAt DESC 기본 적용
+     * - noticePinned DESC -> notice DESC -> createdAt DESC 기본 적용
+     * - 허용: createdAt, likeCount, viewCount, commentCount
      */
     private OrderSpecifier<?>[] orderSpecifiers(Pageable pageable,
         NumberExpression<Long> commentCountExpr) {
         List<OrderSpecifier<?>> orders = new ArrayList<>();
+        orders.add(post.noticePinned.desc());
         orders.add(post.notice.desc());
+        orders.add(post.createdAt.desc());
 
         pageable.getSort().forEach(order -> {
             String prop = order.getProperty();
             boolean asc = order.isAscending();
 
-            if ("createdAt".equals(prop)) {
-                orders.add(asc ? post.createdAt.asc() : post.createdAt.desc());
-            } else if ("likeCount".equals(prop)) {
+            if ("likeCount".equals(prop)) {
                 orders.add(asc ? post.likeCount.asc() : post.likeCount.desc());
             } else if ("viewCount".equals(prop)) {
                 orders.add(asc ? post.viewCount.asc() : post.viewCount.desc());
@@ -109,10 +110,6 @@ public class PostQueryRepositoryImpl implements PostQueryRepository {
                 orders.add(asc ? commentCountExpr.asc() : commentCountExpr.desc());
             }
         });
-
-        if (orders.size() == 1) {
-            orders.add(post.createdAt.desc());
-        }
         return orders.toArray(new OrderSpecifier<?>[0]);
     }
 }

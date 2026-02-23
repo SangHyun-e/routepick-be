@@ -54,6 +54,10 @@ public enum ErrorType {
     /* === 게시글 === */
     POST_NOT_FOUND(HttpStatus.NOT_FOUND, "POST-404", "게시글을 찾을 수 없습니다."),
     POST_FORBIDDEN(HttpStatus.FORBIDDEN, "POST-403", "게시글에 대한 권한이 없습니다."),
+    POST_NOTICE_COMMENT_NOT_ALLOWED(HttpStatus.FORBIDDEN, "POST-405",
+        "공지글에는 댓글을 작성할 수 없습니다."),
+    POST_NOTICE_LIKE_NOT_ALLOWED(HttpStatus.FORBIDDEN, "POST-406",
+        "공지글에는 좋아요를 누를 수 없습니다."),
 
     /* === 댓글 === */
     COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "CMT-404", "댓글을 찾을 수 없습니다."),

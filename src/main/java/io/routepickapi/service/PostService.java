@@ -91,8 +91,12 @@ public class PostService {
         if (region == null || region.isBlank()) {
             posts = postQueryRepository.searchByRegionAndKeyword(null, null, pageable);
         } else {
-            posts = postRepository.findByRegionAndStatusOrderByNoticeDescCreatedAtDesc(region,
-                PostStatus.ACTIVE, pageable);
+            posts = postRepository
+                .findByRegionAndStatusOrderByNoticePinnedDescNoticeDescCreatedAtDesc(
+                    region,
+                    PostStatus.ACTIVE,
+                    pageable
+                );
         }
 
         // 현재 페이지의 postIds
@@ -289,6 +293,10 @@ public class PostService {
             throw new CustomException(ErrorType.POST_NOT_FOUND);
         }
 
+        if (post.isNotice()) {
+            throw new CustomException(ErrorType.POST_NOTICE_LIKE_NOT_ALLOWED);
+        }
+
         // user 존재/상태 체크
         User user = requireActiveUser(userId);
 
@@ -358,6 +366,16 @@ public class PostService {
         Post post = postRepository.findById(id)
             .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
         post.activated();
+    }
+
+    public void toggleNoticePinnedByAdmin(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        if (!post.isNotice()) {
+            throw new CustomException(ErrorType.COMMON_INVALID_INPUT,
+                "공지 게시글만 고정할 수 있습니다.");
+        }
+        post.toggleNoticePinned();
     }
 
     public void hardDeleteByAdmin(Long id) {

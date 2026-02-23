@@ -18,6 +18,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.util.ArrayList;
 import java.util.List;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -29,7 +30,9 @@ import lombok.Setter;
     indexes = {
         @Index(name = "idx_posts_created_at", columnList = "created_at"),
         @Index(name = "idx_posts_region_created_at", columnList = "region, created_at"),
-        @Index(name = "idx_posts_lat_lon", columnList = "latitude, longitude")
+        @Index(name = "idx_posts_lat_lon", columnList = "latitude, longitude"),
+        @Index(name = "idx_posts_notice_pinned_notice_created",
+            columnList = "notice_pinned, is_notice, created_at")
     }
 )
 @Getter
@@ -62,6 +65,11 @@ public class Post extends BaseEntity {
     @Column(name = "is_notice", nullable = false)
     private boolean notice = false;
 
+    @Column(name = "notice_pinned", nullable = false)
+    private boolean noticePinned = false;
+
+    @Column(name = "notice_pinned_at")
+    private LocalDateTime noticePinnedAt;
     // 좋아요 수 카운터
     @Column(nullable = false)
     private int likeCount = 0;
@@ -129,6 +137,9 @@ public class Post extends BaseEntity {
 
     public void markNotice(boolean notice) {
         this.notice = notice;
+        if (!notice) {
+            clearNoticePinned();
+        }
     }
 
     public void softDelete() {
@@ -137,6 +148,22 @@ public class Post extends BaseEntity {
 
     public void activated() {
         this.status = PostStatus.ACTIVE;
+    }
+
+    public void toggleNotice() {
+        this.notice = !this.notice;
+        if (!this.notice) {
+            clearNoticePinned();
+        }
+    }
+
+    public void toggleNoticePinned() {
+        if (this.noticePinned) {
+            clearNoticePinned();
+            return;
+        }
+        this.noticePinned = true;
+        this.noticePinnedAt = LocalDateTime.now();
     }
 
     public void increaseView() {
@@ -151,5 +178,10 @@ public class Post extends BaseEntity {
         if (this.likeCount > 0) {
             this.likeCount--;
         }
+    }
+
+    private void clearNoticePinned() {
+        this.noticePinned = false;
+        this.noticePinnedAt = null;
     }
 }

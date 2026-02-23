@@ -45,6 +45,7 @@ public class CommentService {
         Post post = postRepository.findByIdAndStatus(postId, PostStatus.ACTIVE)
             .orElseThrow(
                 () -> new CustomException(ErrorType.POST_NOT_FOUND));
+        validateNoticeComment(post);
 
         Comment comment = Comment.builder()
             .post(post)
@@ -68,6 +69,7 @@ public class CommentService {
         Post post = postRepository.findByIdAndStatus(postId, PostStatus.ACTIVE)
             .orElseThrow(
                 () -> new CustomException(ErrorType.POST_NOT_FOUND));
+        validateNoticeComment(post);
 
         Comment parent = commentRepository.findById(parentId)
             .orElseThrow(() -> new CustomException(ErrorType.COMMENT_NOT_FOUND));
@@ -135,6 +137,7 @@ public class CommentService {
                 commentId, postId, CommentStatus.ACTIVE
             )
             .orElseThrow(() -> new CustomException(ErrorType.COMMENT_NOT_FOUND));
+        validateNoticeLike(comment.getPost());
 
         return commentLikeRepository.findByCommentAndUser(comment, user)
             .map(existing -> {
@@ -195,6 +198,7 @@ public class CommentService {
                 commentId, postId, CommentStatus.ACTIVE
             )
             .orElseThrow(() -> new CustomException(ErrorType.COMMENT_NOT_FOUND));
+        validateNoticeComment(comment.getPost());
 
         comment.softDelete(deletedBy != null ? deletedBy : CommentDeletedBy.USER);
         log.info("Comment soft-deleted: postId={}, commentId={}, deletedBy={}", postId, commentId,
@@ -209,6 +213,7 @@ public class CommentService {
             .findByIdAndPostIdAndStatus(commentId, postId, CommentStatus.ACTIVE)
             .orElseThrow(() -> new CustomException(
                 ErrorType.COMMENT_NOT_FOUND));
+        validateNoticeComment(c.getPost());
 
         c.changeContent(req.content()); // 엔티티 유효성 검증 포함(<=1000, not blank)
 
@@ -233,6 +238,18 @@ public class CommentService {
             throw new CustomException(ErrorType.USER_NOT_FOUND);
         }
         return user;
+    }
+
+    private void validateNoticeComment(Post post) {
+        if (post.isNotice()) {
+            throw new CustomException(ErrorType.POST_NOTICE_COMMENT_NOT_ALLOWED);
+        }
+    }
+
+    private void validateNoticeLike(Post post) {
+        if (post.isNotice()) {
+            throw new CustomException(ErrorType.POST_NOTICE_LIKE_NOT_ALLOWED);
+        }
     }
 
 
