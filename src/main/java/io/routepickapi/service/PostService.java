@@ -70,6 +70,13 @@ public class PostService {
         User author = requireActiveUser(currentUserId);
         post.setAuthor(author);
 
+        if (Boolean.TRUE.equals(req.isNotice())) {
+            if (author.getRole() != UserRole.ADMIN) {
+                throw new CustomException(ErrorType.COMMON_FORBIDDEN, "공지사항 등록 권한이 없습니다.");
+            }
+            post.markNotice(true);
+        }
+
         Post saved = postRepository.save(post);
         log.info("Create Post: id={}, title='{}', region='{}', authorId={}",
             saved.getId(), saved.getTitle(), saved.getRegion(), author.getId());

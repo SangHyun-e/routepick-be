@@ -20,7 +20,10 @@ public record PostCreateRequest(
     Double longitude,
 
     @Size(max = 50)
-    List<@Pattern(regexp = ".*\\S.*", message = "태그는 공백만으로는 허용되지 않습니다.") @Size(max = 40) String> tags
+    List<@Pattern(regexp = ".*\\S.*", message = "태그는 공백만으로는 허용되지 않습니다.") @Size(max = 40) String> tags,
+
+    @Schema(description = "공지사항 여부")
+    Boolean isNotice
 ) {
 
     @AssertTrue(message = "latitude/longitude 둘 다 함께 제공되어야 합니다.")
