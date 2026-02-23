@@ -89,11 +89,17 @@ public class AuthService {
     }
 
     public void validateLoginableUser(User user) {
+        if (user.getStatus() == UserStatus.ACTIVE) {
+            return;
+        }
+        if (user.getStatus() == UserStatus.PENDING) {
+            log.warn("Login failed: user pending (email={})", user.getEmail());
+            throw new CustomException(ErrorType.USER_EMAIL_NOT_VERIFIED);
+        }
         if (user.getStatus() == UserStatus.BLOCKED) {
             log.warn("Login failed: user blocked (email={})", user.getEmail());
             throw new CustomException(ErrorType.USER_BLOCKED);
         }
-
         if (user.getStatus() == UserStatus.DELETED) {
             log.warn("Login failed: user deleted (email={})", user.getEmail());
             throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
@@ -154,15 +160,7 @@ public class AuthService {
                 return new CustomException(ErrorType.USER_NOT_FOUND);
             });
 
-        if (user.getStatus() == UserStatus.BLOCKED) {
-            log.warn("Refresh failed: user blocked (userId={})", userId);
-            throw new CustomException(ErrorType.USER_BLOCKED);
-        }
-
-        if (user.getStatus() == UserStatus.DELETED) {
-            log.warn("Refresh failed: user deleted (userId={})", userId);
-            throw new CustomException(ErrorType.USER_NOT_FOUND);
-        }
+        validateLoginableUser(user);
 
         String newAccess = jwtProvider.generateAccessToken(user.getId(), user.getEmail());
         long accessExpSec = jwtProvider.getRemainingMillis(newAccess) / 1000;

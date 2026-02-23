@@ -1,5 +1,9 @@
 package io.routepickapi.security.jwt;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.routepickapi.common.error.ApiErrorResponse;
+import io.routepickapi.common.error.ErrorType;
+import io.routepickapi.entity.user.User;
 import io.routepickapi.entity.user.UserRole;
 import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.repository.UserRepository;
@@ -15,6 +19,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -38,6 +43,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtProvider jwtProvider;
     private final UserRepository userRepository;
     private final AccessTokenBlacklistService blacklistService;
+    private final ObjectMapper objectMapper;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -105,29 +111,48 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // 5) 토큰 유효성 검증 + 사용자 로드
             if (jwtProvider.validate(token)) {
                 Long userId = jwtProvider.getUserId(token);
-                userRepository.findById(userId).ifPresent(user -> {
-                    if (user.getStatus() == UserStatus.BLOCKED || user.getStatus() == UserStatus.DELETED) {
-                        return;
-                    }
-                    AuthUser principal = new AuthUser(user.getId(), user.getEmail(),
-                        user.getNickname(), user.getRole());
-                    List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-                    authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
-                    if (user.getRole() == UserRole.ADMIN) {
-                        authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
-                    }
-                    UsernamePasswordAuthenticationToken authenticationToken =
-                        new UsernamePasswordAuthenticationToken(principal, null, authorities);
-                    authenticationToken.setDetails(
-                        new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authenticationToken);
-                });
+                User user = userRepository.findById(userId).orElse(null);
+                if (user == null) {
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+                if (user.getStatus() != UserStatus.ACTIVE) {
+                    writeForbiddenResponse(request, response);
+                    return;
+                }
+                AuthUser principal = new AuthUser(user.getId(), user.getEmail(),
+                    user.getNickname(), user.getRole());
+                List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+                authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+                if (user.getRole() == UserRole.ADMIN) {
+                    authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
+                }
+                UsernamePasswordAuthenticationToken authenticationToken =
+                    new UsernamePasswordAuthenticationToken(principal, null, authorities);
+                authenticationToken.setDetails(
+                    new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authenticationToken);
             }
         } catch (Exception e) {
             // 검증 중 오류가 나도 인증만 안 세우고 다음 필터로 넘김
             log.debug("JWT filter error", e);
         }
         filterChain.doFilter(request, response);
+    }
+
+    private void writeForbiddenResponse(HttpServletRequest request, HttpServletResponse response)
+        throws IOException {
+        ErrorType errorType = ErrorType.USER_STATUS_INACTIVE;
+        ApiErrorResponse body = ApiErrorResponse.of(
+            errorType,
+            null,
+            request.getRequestURI(),
+            null,
+            null
+        );
+        response.setStatus(errorType.httpStatus.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        objectMapper.writeValue(response.getWriter(), body);
     }
 
 
