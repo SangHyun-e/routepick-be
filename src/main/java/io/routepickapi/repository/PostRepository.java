@@ -16,15 +16,12 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     // 최신순 페이지 조회
     @EntityGraph(attributePaths = {"author"})
-    Page<Post> findByStatusOrderByCreatedAtDesc(PostStatus status, Pageable pageable);
+    Page<Post> findByStatusOrderByNoticeDescCreatedAtDesc(PostStatus status, Pageable pageable);
 
     // 지역 + 상태 필터 최신순 페이지 조회
     @EntityGraph(attributePaths = {"author"})
-    Page<Post> findByRegionAndStatusOrderByNoticePinnedDescNoticeDescCreatedAtDesc(
-        String region,
-        PostStatus status,
-        Pageable pageable
-    );
+    Page<Post> findByRegionAndStatusOrderByNoticeDescCreatedAtDesc(String region, PostStatus status,
+        Pageable pageable);
 
     // 내 게시글 목록 조회 (숨김 포함, 삭제 제외)
     @EntityGraph(attributePaths = {"author"})

@@ -70,6 +70,13 @@ public class PostService {
         User author = requireActiveUser(currentUserId);
         post.setAuthor(author);
 
+        if (Boolean.TRUE.equals(req.isNotice())) {
+            if (author.getRole() != UserRole.ADMIN) {
+                throw new CustomException(ErrorType.COMMON_FORBIDDEN, "공지사항 등록 권한이 없습니다.");
+            }
+            post.markNotice(true);
+        }
+
         Post saved = postRepository.save(post);
         log.info("Create Post: id={}, title='{}', region='{}', authorId={}",
             saved.getId(), saved.getTitle(), saved.getRegion(), author.getId());
@@ -84,12 +91,8 @@ public class PostService {
         if (region == null || region.isBlank()) {
             posts = postQueryRepository.searchByRegionAndKeyword(null, null, pageable);
         } else {
-            posts = postRepository
-                .findByRegionAndStatusOrderByNoticePinnedDescNoticeDescCreatedAtDesc(
-                    region,
-                    PostStatus.ACTIVE,
-                    pageable
-                );
+            posts = postRepository.findByRegionAndStatusOrderByNoticeDescCreatedAtDesc(region,
+                PostStatus.ACTIVE, pageable);
         }
 
         // 현재 페이지의 postIds
@@ -384,6 +387,15 @@ public class PostService {
         commentLikeRepository.deleteByCommentPostId(post.getId());
         commentRepository.deleteByPostId(post.getId());
         postRepository.delete(post);
+    }
+
+    public void updateNoticeByAdmin(Long id, boolean notice) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        if (post.getStatus() == PostStatus.DELETED) {
+            throw new CustomException(ErrorType.POST_NOT_FOUND);
+        }
+        post.markNotice(notice);
     }
 
     private User requireActiveUser(Long userId) {
