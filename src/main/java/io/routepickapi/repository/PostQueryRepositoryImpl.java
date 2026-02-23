@@ -88,7 +88,8 @@ public class PostQueryRepositoryImpl implements PostQueryRepository {
 
     /**
      * 정렬 화이트리스트 매핑
-     * - 허용: createdAt, likeCount, viewCount -미지정/빈 정렬이면 createdAt DESC 기본 적용
+     * - noticePinned DESC -> notice DESC -> createdAt DESC 기본 적용
+     * - 허용: createdAt, likeCount, viewCount, commentCount
      */
     private OrderSpecifier<?>[] orderSpecifiers(Pageable pageable,
         NumberExpression<Long> commentCountExpr) {
@@ -99,9 +100,7 @@ public class PostQueryRepositoryImpl implements PostQueryRepository {
             String prop = order.getProperty();
             boolean asc = order.isAscending();
 
-            if ("createdAt".equals(prop)) {
-                orders.add(asc ? post.createdAt.asc() : post.createdAt.desc());
-            } else if ("likeCount".equals(prop)) {
+            if ("likeCount".equals(prop)) {
                 orders.add(asc ? post.likeCount.asc() : post.likeCount.desc());
             } else if ("viewCount".equals(prop)) {
                 orders.add(asc ? post.viewCount.asc() : post.viewCount.desc());

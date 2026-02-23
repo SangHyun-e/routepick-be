@@ -18,6 +18,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.util.ArrayList;
 import java.util.List;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -29,7 +30,9 @@ import lombok.Setter;
     indexes = {
         @Index(name = "idx_posts_created_at", columnList = "created_at"),
         @Index(name = "idx_posts_region_created_at", columnList = "region, created_at"),
-        @Index(name = "idx_posts_lat_lon", columnList = "latitude, longitude")
+        @Index(name = "idx_posts_lat_lon", columnList = "latitude, longitude"),
+        @Index(name = "idx_posts_notice_pinned_notice_created",
+            columnList = "notice_pinned, is_notice, created_at")
     }
 )
 @Getter
@@ -139,6 +142,22 @@ public class Post extends BaseEntity {
         this.status = PostStatus.ACTIVE;
     }
 
+    public void toggleNotice() {
+        this.notice = !this.notice;
+        if (!this.notice) {
+            clearNoticePinned();
+        }
+    }
+
+    public void toggleNoticePinned() {
+        if (this.noticePinned) {
+            clearNoticePinned();
+            return;
+        }
+        this.noticePinned = true;
+        this.noticePinnedAt = LocalDateTime.now();
+    }
+
     public void increaseView() {
         this.viewCount++;
     }
@@ -151,5 +170,10 @@ public class Post extends BaseEntity {
         if (this.likeCount > 0) {
             this.likeCount--;
         }
+    }
+
+    private void clearNoticePinned() {
+        this.noticePinned = false;
+        this.noticePinnedAt = null;
     }
 }
