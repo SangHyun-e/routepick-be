@@ -369,6 +369,15 @@ public class PostService {
         postRepository.delete(post);
     }
 
+    public void updateNoticeByAdmin(Long id, boolean notice) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        if (post.getStatus() == PostStatus.DELETED) {
+            throw new CustomException(ErrorType.POST_NOT_FOUND);
+        }
+        post.markNotice(notice);
+    }
+
     private User requireActiveUser(Long userId) {
         if (userId == null) {
             throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
