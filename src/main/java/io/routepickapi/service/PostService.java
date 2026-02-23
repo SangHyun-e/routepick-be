@@ -368,6 +368,12 @@ public class PostService {
         post.activated();
     }
 
+    public void toggleNoticeByAdmin(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        post.toggleNotice();
+    }
+
     public void toggleNoticePinnedByAdmin(Long id) {
         Post post = postRepository.findById(id)
             .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
