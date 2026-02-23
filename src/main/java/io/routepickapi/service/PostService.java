@@ -91,7 +91,7 @@ public class PostService {
         if (region == null || region.isBlank()) {
             posts = postQueryRepository.searchByRegionAndKeyword(null, null, pageable);
         } else {
-            posts = postRepository.findByRegionAndStatusOrderByCreatedAtDesc(region,
+            posts = postRepository.findByRegionAndStatusOrderByNoticeDescCreatedAtDesc(region,
                 PostStatus.ACTIVE, pageable);
         }
 
