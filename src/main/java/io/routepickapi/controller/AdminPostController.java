@@ -66,6 +66,20 @@ public class AdminPostController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(summary = "관리자 공지 토글", description = "게시글의 공지 여부 토글")
+    @PatchMapping("/{id}/notice")
+    public ResponseEntity<Void> toggleNotice(@PathVariable @Min(1) Long id) {
+        postService.toggleNoticeByAdmin(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "관리자 공지 고정 토글", description = "공지 게시글 고정 여부 토글")
+    @PatchMapping("/{id}/notice/pin")
+    public ResponseEntity<Void> toggleNoticePinned(@PathVariable @Min(1) Long id) {
+        postService.toggleNoticePinnedByAdmin(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @Operation(summary = "관리자 게시글 물리 삭제", description = "게시글을 DB에서 삭제")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> hardDelete(@PathVariable @Min(1) Long id) {
