@@ -65,6 +65,11 @@ public class Post extends BaseEntity {
     @Column(name = "is_notice", nullable = false)
     private boolean notice = false;
 
+    @Column(name = "notice_pinned", nullable = false)
+    private boolean noticePinned = false;
+
+    @Column(name = "notice_pinned_at")
+    private LocalDateTime noticePinnedAt;
     // 좋아요 수 카운터
     @Column(nullable = false)
     private int likeCount = 0;
@@ -132,6 +137,9 @@ public class Post extends BaseEntity {
 
     public void markNotice(boolean notice) {
         this.notice = notice;
+        if (!notice) {
+            clearNoticePinned();
+        }
     }
 
     public void softDelete() {

@@ -91,8 +91,12 @@ public class PostService {
         if (region == null || region.isBlank()) {
             posts = postQueryRepository.searchByRegionAndKeyword(null, null, pageable);
         } else {
-            posts = postRepository.findByRegionAndStatusOrderByNoticeDescCreatedAtDesc(region,
-                PostStatus.ACTIVE, pageable);
+            posts = postRepository
+                .findByRegionAndStatusOrderByNoticePinnedDescNoticeDescCreatedAtDesc(
+                    region,
+                    PostStatus.ACTIVE,
+                    pageable
+                );
         }
 
         // 현재 페이지의 postIds

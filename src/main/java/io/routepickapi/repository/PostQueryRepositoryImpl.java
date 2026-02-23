@@ -94,7 +94,9 @@ public class PostQueryRepositoryImpl implements PostQueryRepository {
     private OrderSpecifier<?>[] orderSpecifiers(Pageable pageable,
         NumberExpression<Long> commentCountExpr) {
         List<OrderSpecifier<?>> orders = new ArrayList<>();
+        orders.add(post.noticePinned.desc());
         orders.add(post.notice.desc());
+        orders.add(post.createdAt.desc());
 
         pageable.getSort().forEach(order -> {
             String prop = order.getProperty();
@@ -108,10 +110,6 @@ public class PostQueryRepositoryImpl implements PostQueryRepository {
                 orders.add(asc ? commentCountExpr.asc() : commentCountExpr.desc());
             }
         });
-
-        if (orders.size() == 1) {
-            orders.add(post.createdAt.desc());
-        }
         return orders.toArray(new OrderSpecifier<?>[0]);
     }
 }
