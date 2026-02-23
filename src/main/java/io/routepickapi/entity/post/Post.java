@@ -59,6 +59,9 @@ public class Post extends BaseEntity {
     @Column(nullable = false, length = 16)
     private PostStatus status = PostStatus.ACTIVE;
 
+    @Column(name = "is_notice", nullable = false)
+    private boolean notice = false;
+
     // 좋아요 수 카운터
     @Column(nullable = false)
     private int likeCount = 0;
@@ -122,6 +125,10 @@ public class Post extends BaseEntity {
 
     public void hide() {
         this.status = PostStatus.HIDDEN;
+    }
+
+    public void markNotice(boolean notice) {
+        this.notice = notice;
     }
 
     public void softDelete() {
