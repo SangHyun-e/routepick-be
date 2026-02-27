@@ -4,6 +4,7 @@ import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.user.AdminUserDetailResponse;
 import io.routepickapi.dto.user.AdminUserListItemResponse;
+import io.routepickapi.dto.user.AdminUserRejoinRestrictionReleaseRequest;
 import io.routepickapi.dto.user.AdminUserStatusHistoryResponse;
 import io.routepickapi.dto.user.AdminUserStatusUpdateRequest;
 import io.routepickapi.security.AuthUser;
@@ -73,12 +74,14 @@ public class AdminUserController {
     @PatchMapping("/{id}/rejoin-restriction/release")
     public ResponseEntity<Void> releaseRejoinRestriction(
         @PathVariable @Min(1) Long id,
+        @Valid @RequestBody(required = false) AdminUserRejoinRestrictionReleaseRequest request,
         @AuthenticationPrincipal AuthUser adminUser
     ) {
         if (adminUser == null) {
             throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
         }
-        adminUserService.releaseRejoinRestriction(id, adminUser.id());
+        String reason = request != null ? request.reason() : null;
+        adminUserService.releaseRejoinRestriction(id, adminUser.id(), reason);
         return ResponseEntity.noContent().build();
     }
 

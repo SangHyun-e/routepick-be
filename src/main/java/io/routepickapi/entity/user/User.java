@@ -55,6 +55,9 @@ public class User extends BaseEntity {
     @Column(name = "profile_complete", nullable = false)
     private boolean profileComplete = true;
 
+    @Column(name = "withdraw_reason", length = 255)
+    private String withdrawReason;
+
     @Column(name = "deleted_email_hash", length = 64)
     private String deletedEmailHash;
 
@@ -66,6 +69,9 @@ public class User extends BaseEntity {
 
     @Column(name = "rejoin_restriction_released_by")
     private Long rejoinRestrictionReleasedBy;
+
+    @Column(name = "rejoin_restriction_release_reason", length = 255)
+    private String rejoinRestrictionReleaseReason;
 
     public User(String email, String passwordHash, String nickname) {
         this(email, passwordHash, nickname, UserAuthProvider.LOCAL);
@@ -156,10 +162,27 @@ public class User extends BaseEntity {
         this.rejoinRestrictedUntil = restrictedUntil;
         this.rejoinRestrictionReleasedAt = null;
         this.rejoinRestrictionReleasedBy = null;
+        this.rejoinRestrictionReleaseReason = null;
     }
 
-    public void releaseRejoinRestriction(Long adminUserId) {
+    public void releaseRejoinRestriction(Long adminUserId, String reason) {
         this.rejoinRestrictionReleasedAt = LocalDateTime.now();
         this.rejoinRestrictionReleasedBy = adminUserId;
+        this.rejoinRestrictionReleaseReason = normalizeReason(reason);
+    }
+
+    public void setWithdrawReason(String reason) {
+        this.withdrawReason = normalizeReason(reason);
+    }
+
+    private String normalizeReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return null;
+        }
+        String trimmed = reason.trim();
+        if (trimmed.length() > 255) {
+            throw new IllegalArgumentException("invalid reason");
+        }
+        return trimmed;
     }
 }

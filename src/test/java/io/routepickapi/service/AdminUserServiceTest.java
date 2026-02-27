@@ -143,8 +143,8 @@ class AdminUserServiceTest {
 
         when(userRepository.findById(6L)).thenReturn(Optional.of(user));
 
-        adminUserService.releaseRejoinRestriction(6L, 77L);
+        adminUserService.releaseRejoinRestriction(6L, 77L, "release");
 
-        verify(rejoinRestrictionService).releaseRestriction(user, 77L);
+        verify(rejoinRestrictionService).releaseRestriction(user, 77L, "release");
     }
 }

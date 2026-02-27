@@ -7,6 +7,7 @@ import io.routepickapi.dto.post.PostListItemResponse;
 import io.routepickapi.dto.user.MeResponse;
 import io.routepickapi.dto.user.NicknameUpdateRequest;
 import io.routepickapi.dto.user.PasswordVerifyRequest;
+import io.routepickapi.dto.user.WithdrawRequest;
 import io.routepickapi.security.AuthUser;
 import io.routepickapi.service.AuthService;
 import io.routepickapi.service.KakaoOAuthService;
@@ -113,14 +114,16 @@ public class UserController {
     @DeleteMapping("/me")
     public ResponseEntity<Void> withdraw(
         @AuthenticationPrincipal AuthUser currentUser,
-        @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+        @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
+        @Valid @RequestBody(required = false) WithdrawRequest request
     ) {
         if (currentUser == null) {
             throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
         }
         log.info("DELETE /users/me - userId={}", currentUser.id());
         kakaoOAuthService.unlinkIfNeeded(currentUser.id());
-        userService.withdraw(currentUser.id());
+        String reason = request != null ? request.reason() : null;
+        userService.withdraw(currentUser.id(), reason);
         authService.logoutAll(authHeader, currentUser.id());
 
         ResponseCookie clear = ResponseCookie.from("RP_REFRESH", "")

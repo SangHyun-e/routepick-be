@@ -35,7 +35,7 @@ public class UserService {
     }
 
     @Transactional
-    public void withdraw(Long userId) {
+    public void withdraw(Long userId, String reason) {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new CustomException(ErrorType.USER_NOT_FOUND));
 
@@ -48,6 +48,7 @@ public class UserService {
         }
 
         String email = user.getEmail();
+        user.setWithdrawReason(reason);
         user.delete();
         rejoinRestrictionService.applyRestriction(user, email);
     }
