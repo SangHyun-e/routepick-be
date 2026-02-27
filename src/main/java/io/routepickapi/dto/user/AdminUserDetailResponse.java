@@ -14,6 +14,9 @@ public record AdminUserDetailResponse(
     UserStatus status,
     UserAuthProvider authProvider,
     boolean profileComplete,
+    LocalDateTime rejoinRestrictedUntil,
+    LocalDateTime rejoinRestrictionReleasedAt,
+    Long rejoinRestrictionReleasedBy,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {
@@ -26,6 +29,9 @@ public record AdminUserDetailResponse(
             user.getStatus(),
             user.getAuthProvider(),
             user.isProfileComplete(),
+            user.getRejoinRestrictedUntil(),
+            user.getRejoinRestrictionReleasedAt(),
+            user.getRejoinRestrictionReleasedBy(),
             user.getCreatedAt(),
             user.getUpdatedAt()
         );

@@ -29,6 +29,7 @@ public class AuthService {
     private final RefreshTokenService refreshTokenService; // Redis Store
     private final AccessTokenBlacklistService blacklistService;
     private final EmailVerificationService emailVerificationService;
+    private final UserRejoinRestrictionService rejoinRestrictionService;
 
     // 회원가입
     public SignUpResponse signUp(SignUpRequest req) {
@@ -38,6 +39,8 @@ public class AuthService {
             log.warn("SignUp failed: email already exists (email={})", req.email());
             throw new CustomException(ErrorType.USER_EMAIL_EXISTS);
         }
+
+        rejoinRestrictionService.validateRejoinAllowed(req.email());
 
         if (userRepository.existsByNickname(req.nickname())) {
             log.warn("SignUp failed: nickname already exists (nickname={})", req.nickname());

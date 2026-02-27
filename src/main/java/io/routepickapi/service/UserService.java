@@ -18,6 +18,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UserRejoinRestrictionService rejoinRestrictionService;
 
     public MeResponse getMe(Long userId) {
         User user = userRepository.findById(userId)
@@ -46,7 +47,9 @@ public class UserService {
             return;
         }
 
+        String email = user.getEmail();
         user.delete();
+        rejoinRestrictionService.applyRestriction(user, email);
     }
 
     public void verifyPassword(Long userId, String rawPassword) {

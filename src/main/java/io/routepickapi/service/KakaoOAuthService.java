@@ -47,6 +47,7 @@ public class KakaoOAuthService {
     private final UserRepository userRepository;
     private final UserIdentityRepository userIdentityRepository;
     private final AuthService authService;
+    private final UserRejoinRestrictionService rejoinRestrictionService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -134,6 +135,7 @@ public class KakaoOAuthService {
         if (existingUser.isPresent()) {
             user = existingUser.get();
         } else {
+            rejoinRestrictionService.validateRejoinAllowed(email);
             user = createNewUser(email, providerUserId);
             createdNewUser = true;
         }
