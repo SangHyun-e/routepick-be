@@ -10,6 +10,7 @@ import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.entity.user.UserStatusHistory;
 import io.routepickapi.repository.UserRepository;
 import io.routepickapi.repository.UserStatusHistoryRepository;
+import java.util.List;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -102,6 +103,27 @@ public class AdminUserService {
         }
 
         rejoinRestrictionService.releaseRestriction(user, adminUserId, reason);
+    }
+
+    public void releaseRejoinRestrictionByEmail(String email, Long adminUserId, String reason) {
+        if (email == null || email.isBlank()) {
+            throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "email 값이 필요합니다.");
+        }
+
+        String emailHash = rejoinRestrictionService.toEmailHash(email);
+        List<User> users = userRepository
+            .findAllByDeletedEmailHashAndStatusAndRejoinRestrictionReleasedAtIsNull(
+                emailHash,
+                UserStatus.DELETED
+            );
+
+        if (users.isEmpty()) {
+            throw new CustomException(ErrorType.USER_NOT_FOUND, "해당 이메일의 탈퇴 기록이 없습니다.");
+        }
+
+        for (User user : users) {
+            rejoinRestrictionService.releaseRestriction(user, adminUserId, reason);
+        }
     }
 
     private void validateStatusRequest(UserStatus status) {

@@ -45,6 +45,10 @@ public class UserRejoinRestrictionService {
         user.releaseRejoinRestriction(adminUserId, reason);
     }
 
+    public String toEmailHash(String email) {
+        return hashEmail(email);
+    }
+
     private String hashEmail(String email) {
         String normalized = normalizeEmail(email);
         try {

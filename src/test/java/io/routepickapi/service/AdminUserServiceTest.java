@@ -14,6 +14,7 @@ import io.routepickapi.entity.user.UserStatusHistory;
 import io.routepickapi.repository.UserRepository;
 import io.routepickapi.repository.UserStatusHistoryRepository;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -146,5 +147,38 @@ class AdminUserServiceTest {
         adminUserService.releaseRejoinRestriction(6L, 77L, "release");
 
         verify(rejoinRestrictionService).releaseRestriction(user, 77L, "release");
+    }
+
+    @Test
+    void releaseRejoinRestrictionByEmailReleasesUsers() {
+        User user = new User("release@example.com", "hash", "release");
+        ReflectionTestUtils.setField(user, "id", 7L);
+        user.delete();
+        user.applyRejoinRestriction("hash", LocalDateTime.now().plusDays(7));
+
+        when(rejoinRestrictionService.toEmailHash("release@example.com")).thenReturn("hash");
+        when(userRepository
+            .findAllByDeletedEmailHashAndStatusAndRejoinRestrictionReleasedAtIsNull("hash",
+                UserStatus.DELETED))
+            .thenReturn(List.of(user));
+
+        adminUserService.releaseRejoinRestrictionByEmail("release@example.com", 88L, "reason");
+
+        verify(rejoinRestrictionService).releaseRestriction(user, 88L, "reason");
+    }
+
+    @Test
+    void releaseRejoinRestrictionByEmailThrowsWhenMissing() {
+        when(rejoinRestrictionService.toEmailHash("missing@example.com")).thenReturn("hash");
+        when(userRepository
+            .findAllByDeletedEmailHashAndStatusAndRejoinRestrictionReleasedAtIsNull("hash",
+                UserStatus.DELETED))
+            .thenReturn(List.of());
+
+        CustomException exception = assertThrows(CustomException.class,
+            () -> adminUserService.releaseRejoinRestrictionByEmail("missing@example.com", 1L,
+                "reason"));
+
+        assertThat(exception.getType()).isEqualTo(ErrorType.USER_NOT_FOUND);
     }
 }
