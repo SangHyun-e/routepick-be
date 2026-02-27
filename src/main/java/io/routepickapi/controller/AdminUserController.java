@@ -4,6 +4,7 @@ import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.user.AdminUserDetailResponse;
 import io.routepickapi.dto.user.AdminUserListItemResponse;
+import io.routepickapi.dto.user.AdminUserRejoinRestrictionReleaseByEmailRequest;
 import io.routepickapi.dto.user.AdminUserRejoinRestrictionReleaseRequest;
 import io.routepickapi.dto.user.AdminUserStatusHistoryResponse;
 import io.routepickapi.dto.user.AdminUserStatusUpdateRequest;
@@ -82,6 +83,20 @@ public class AdminUserController {
         }
         String reason = request != null ? request.reason() : null;
         adminUserService.releaseRejoinRestriction(id, adminUser.id(), reason);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "관리자 이메일 기반 재가입 제한 해제", description = "이메일로 재가입 제한 해제")
+    @PatchMapping("/rejoin-restriction/release-by-email")
+    public ResponseEntity<Void> releaseRejoinRestrictionByEmail(
+        @Valid @RequestBody AdminUserRejoinRestrictionReleaseByEmailRequest request,
+        @AuthenticationPrincipal AuthUser adminUser
+    ) {
+        if (adminUser == null) {
+            throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
+        }
+        adminUserService.releaseRejoinRestrictionByEmail(request.email(), adminUser.id(),
+            request.reason());
         return ResponseEntity.noContent().build();
     }
 
