@@ -14,9 +14,11 @@ public record AdminUserDetailResponse(
     UserStatus status,
     UserAuthProvider authProvider,
     boolean profileComplete,
+    String withdrawReason,
     LocalDateTime rejoinRestrictedUntil,
     LocalDateTime rejoinRestrictionReleasedAt,
     Long rejoinRestrictionReleasedBy,
+    String rejoinRestrictionReleaseReason,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {
@@ -29,9 +31,11 @@ public record AdminUserDetailResponse(
             user.getStatus(),
             user.getAuthProvider(),
             user.isProfileComplete(),
+            user.getWithdrawReason(),
             user.getRejoinRestrictedUntil(),
             user.getRejoinRestrictionReleasedAt(),
             user.getRejoinRestrictionReleasedBy(),
+            user.getRejoinRestrictionReleaseReason(),
             user.getCreatedAt(),
             user.getUpdatedAt()
         );

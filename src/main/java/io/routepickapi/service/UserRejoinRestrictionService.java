@@ -41,8 +41,8 @@ public class UserRejoinRestrictionService {
         user.applyRejoinRestriction(emailHash, restrictedUntil);
     }
 
-    public void releaseRestriction(User user, Long adminUserId) {
-        user.releaseRejoinRestriction(adminUserId);
+    public void releaseRestriction(User user, Long adminUserId, String reason) {
+        user.releaseRejoinRestriction(adminUserId, reason);
     }
 
     private String hashEmail(String email) {

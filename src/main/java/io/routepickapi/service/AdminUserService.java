@@ -87,7 +87,7 @@ public class AdminUserService {
             .map(AdminUserStatusHistoryResponse::from);
     }
 
-    public void releaseRejoinRestriction(Long userId, Long adminUserId) {
+    public void releaseRejoinRestriction(Long userId, Long adminUserId, String reason) {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new CustomException(ErrorType.USER_NOT_FOUND));
 
@@ -101,7 +101,7 @@ public class AdminUserService {
             return;
         }
 
-        rejoinRestrictionService.releaseRestriction(user, adminUserId);
+        rejoinRestrictionService.releaseRestriction(user, adminUserId, reason);
     }
 
     private void validateStatusRequest(UserStatus status) {
