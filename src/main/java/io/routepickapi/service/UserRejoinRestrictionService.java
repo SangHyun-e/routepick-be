@@ -37,6 +37,13 @@ public class UserRejoinRestrictionService {
 
     public void applyRestriction(User user, String email) {
         String emailHash = hashEmail(email);
+        applyRestrictionWithHash(user, emailHash);
+    }
+
+    public void applyRestrictionWithHash(User user, String emailHash) {
+        if (emailHash == null || emailHash.isBlank()) {
+            throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "탈퇴 이메일 해시가 없습니다.");
+        }
         LocalDateTime restrictedUntil = LocalDateTime.now().plusDays(REJOIN_RESTRICTION_DAYS);
         user.applyRejoinRestriction(emailHash, restrictedUntil);
     }

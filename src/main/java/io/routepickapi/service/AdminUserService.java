@@ -29,9 +29,10 @@ public class AdminUserService {
     private final UserRejoinRestrictionService rejoinRestrictionService;
 
     @Transactional(readOnly = true)
-    public Page<AdminUserListItemResponse> list(String keyword, Pageable pageable) {
+    public Page<AdminUserListItemResponse> list(String keyword, UserStatus status,
+        Pageable pageable) {
         String trimmed = keyword != null ? keyword.trim() : "";
-        Page<User> users = userRepository.searchByKeyword(trimmed, pageable);
+        Page<User> users = userRepository.searchByKeywordAndStatus(trimmed, status, pageable);
         return users.map(AdminUserListItemResponse::from);
     }
 
@@ -123,6 +124,42 @@ public class AdminUserService {
 
         for (User user : users) {
             rejoinRestrictionService.releaseRestriction(user, adminUserId, reason);
+        }
+    }
+
+    public void lockRejoinRestriction(Long userId, Long adminUserId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new CustomException(ErrorType.USER_NOT_FOUND));
+
+        if (user.getStatus() != UserStatus.DELETED) {
+            throw new CustomException(ErrorType.USER_STATUS_CHANGE_NOT_ALLOWED,
+                "삭제된 사용자만 제한 설정이 가능합니다.");
+        }
+
+        if (user.getRejoinRestrictedUntil() != null
+            && user.getRejoinRestrictionReleasedAt() == null
+            && user.getRejoinRestrictedUntil().isAfter(java.time.LocalDateTime.now())) {
+            return;
+        }
+
+        rejoinRestrictionService.applyRestrictionWithHash(user, user.getDeletedEmailHash());
+    }
+
+    public void lockRejoinRestrictionByEmail(String email, Long adminUserId) {
+        if (email == null || email.isBlank()) {
+            throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "email 값이 필요합니다.");
+        }
+
+        String emailHash = rejoinRestrictionService.toEmailHash(email);
+        List<User> users = userRepository
+            .findAllByDeletedEmailHashAndStatus(emailHash, UserStatus.DELETED);
+
+        if (users.isEmpty()) {
+            throw new CustomException(ErrorType.USER_NOT_FOUND, "해당 이메일의 탈퇴 기록이 없습니다.");
+        }
+
+        for (User user : users) {
+            rejoinRestrictionService.applyRestrictionWithHash(user, emailHash);
         }
     }
 
