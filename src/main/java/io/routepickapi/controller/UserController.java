@@ -6,6 +6,7 @@ import io.routepickapi.dto.comment.MyCommentResponse;
 import io.routepickapi.dto.post.PostListItemResponse;
 import io.routepickapi.dto.user.MeResponse;
 import io.routepickapi.dto.user.NicknameUpdateRequest;
+import io.routepickapi.dto.user.PasswordChangeRequest;
 import io.routepickapi.dto.user.PasswordVerifyRequest;
 import io.routepickapi.dto.user.WithdrawRequest;
 import io.routepickapi.security.AuthUser;
@@ -155,6 +156,25 @@ public class UserController {
         log.info("PATCH /users/me/nickname - userId={}", currentUser.id());
         MeResponse res = userService.updateNickname(currentUser.id(), req.nickname());
         return ResponseEntity.ok(res);
+    }
+
+    @Operation(
+        summary = "비밀번호 변경",
+        description = "현재 비밀번호 확인 후 비밀번호 변경",
+        security = {@SecurityRequirement(name = "bearerAuth")}
+    )
+    @PatchMapping("/me/password")
+    public ResponseEntity<Void> changePassword(
+        @AuthenticationPrincipal AuthUser currentUser,
+        @Valid @RequestBody PasswordChangeRequest req
+    ) {
+        if (currentUser == null) {
+            throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
+        }
+        log.info("PATCH /users/me/password - userId={}", currentUser.id());
+        userService.changePassword(currentUser.id(), req.currentPassword(), req.newPassword(),
+            req.confirmPassword());
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(

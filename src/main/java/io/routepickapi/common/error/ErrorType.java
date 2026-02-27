@@ -50,6 +50,8 @@ public enum ErrorType {
     USER_EMAIL_NOT_VERIFIED(HttpStatus.FORBIDDEN, "USER-412",
         "이메일 인증이 필요합니다. 마이페이지에서 인증을 완료해주세요."),
 
+    USER_PASSWORD_NOT_SET(HttpStatus.BAD_REQUEST, "USER-415", "비밀번호가 설정되지 않은 계정입니다."),
+
     USER_REJOIN_RESTRICTED(HttpStatus.FORBIDDEN, "USER-414", "탈퇴 후 재가입 제한 상태입니다."),
 
     USER_STATUS_CHANGE_NOT_ALLOWED(HttpStatus.CONFLICT, "USER-413", "상태 변경이 허용되지 않습니다."),
