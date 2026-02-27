@@ -2,6 +2,8 @@ package io.routepickapi.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -180,5 +182,34 @@ class AdminUserServiceTest {
                 "reason"));
 
         assertThat(exception.getType()).isEqualTo(ErrorType.USER_NOT_FOUND);
+    }
+
+    @Test
+    void lockRejoinRestrictionAppliesRestriction() {
+        User user = new User("lock@example.com", "hash", "lock");
+        ReflectionTestUtils.setField(user, "id", 8L);
+        user.delete();
+        user.applyRejoinRestriction("hash", LocalDateTime.now().minusDays(1));
+
+        when(userRepository.findById(8L)).thenReturn(Optional.of(user));
+
+        adminUserService.lockRejoinRestriction(8L, 55L);
+
+        verify(rejoinRestrictionService).applyRestrictionWithHash(user, "hash");
+    }
+
+    @Test
+    void lockRejoinRestrictionByEmailAppliesRestriction() {
+        User user = new User("lock@example.com", "hash", "lock");
+        ReflectionTestUtils.setField(user, "id", 9L);
+        user.delete();
+
+        when(rejoinRestrictionService.toEmailHash(anyString())).thenReturn("hash");
+        when(userRepository.findAllByDeletedEmailHashAndStatus(anyString(), eq(UserStatus.DELETED)))
+            .thenReturn(List.of(user));
+
+        adminUserService.lockRejoinRestrictionByEmail("lock@example.com", 66L);
+
+        verify(rejoinRestrictionService).applyRestrictionWithHash(user, "hash");
     }
 }

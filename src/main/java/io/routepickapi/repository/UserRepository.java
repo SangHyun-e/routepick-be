@@ -35,6 +35,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
         UserStatus status
     );
 
+    List<User> findAllByDeletedEmailHashAndStatus(
+        String deletedEmailHash,
+        UserStatus status
+    );
+
     @Query("""
         select u
           from User u
@@ -42,6 +47,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
             or :keyword = ''
             or lower(u.email) like lower(concat('%', :keyword, '%'))
             or lower(u.nickname) like lower(concat('%', :keyword, '%')))
+           and (:status is null or u.status = :status)
         """)
-    Page<User> searchByKeyword(@Param("keyword") String keyword, Pageable pageable);
+    Page<User> searchByKeywordAndStatus(
+        @Param("keyword") String keyword,
+        @Param("status") UserStatus status,
+        Pageable pageable
+    );
 }
