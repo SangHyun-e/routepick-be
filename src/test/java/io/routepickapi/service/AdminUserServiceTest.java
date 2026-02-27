@@ -13,6 +13,7 @@ import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.entity.user.UserStatusHistory;
 import io.routepickapi.repository.UserRepository;
 import io.routepickapi.repository.UserStatusHistoryRepository;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,12 +35,15 @@ class AdminUserServiceTest {
     @Mock
     private RefreshTokenService refreshTokenService;
 
+    @Mock
+    private UserRejoinRestrictionService rejoinRestrictionService;
+
     private AdminUserService adminUserService;
 
     @BeforeEach
     void setUp() {
         adminUserService = new AdminUserService(userRepository, historyRepository,
-            refreshTokenService);
+            refreshTokenService, rejoinRestrictionService);
     }
 
     @Test
@@ -73,6 +77,7 @@ class AdminUserServiceTest {
 
         assertThat(user.getStatus()).isEqualTo(UserStatus.DELETED);
         verify(refreshTokenService).deleteAllForUser(2L);
+        verify(rejoinRestrictionService).applyRestriction(user, "deleted@example.com");
         ArgumentCaptor<UserStatusHistory> captor = ArgumentCaptor.forClass(UserStatusHistory.class);
         verify(historyRepository).save(captor.capture());
         assertThat(captor.getValue().getFromStatus()).isEqualTo(UserStatus.ACTIVE);
@@ -126,5 +131,20 @@ class AdminUserServiceTest {
         assertThat(captor.getValue().getFromStatus()).isEqualTo(UserStatus.PENDING);
         assertThat(captor.getValue().getToStatus()).isEqualTo(UserStatus.DELETED);
         verify(refreshTokenService).deleteAllForUser(5L);
+        verify(rejoinRestrictionService).applyRestriction(user, "pending-delete@example.com");
+    }
+
+    @Test
+    void releaseRejoinRestrictionCallsService() {
+        User user = new User("release@example.com", "hash", "release");
+        ReflectionTestUtils.setField(user, "id", 6L);
+        user.delete();
+        user.applyRejoinRestriction("hash", LocalDateTime.now().plusDays(7));
+
+        when(userRepository.findById(6L)).thenReturn(Optional.of(user));
+
+        adminUserService.releaseRejoinRestriction(6L, 77L);
+
+        verify(rejoinRestrictionService).releaseRestriction(user, 77L);
     }
 }

@@ -2,6 +2,7 @@ package io.routepickapi.repository;
 
 import io.routepickapi.entity.user.User;
 import io.routepickapi.entity.user.UserStatus;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -22,6 +23,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByNickname(String nickname);
 
     boolean existsByEmailAndStatus(String email, UserStatus status);
+
+    boolean existsByDeletedEmailHashAndRejoinRestrictedUntilAfterAndRejoinRestrictionReleasedAtIsNull(
+        String deletedEmailHash,
+        LocalDateTime rejoinRestrictedUntil
+    );
 
     @Query("""
         select u

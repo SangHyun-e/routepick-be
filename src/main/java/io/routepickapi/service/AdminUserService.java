@@ -25,6 +25,7 @@ public class AdminUserService {
     private final UserRepository userRepository;
     private final UserStatusHistoryRepository historyRepository;
     private final RefreshTokenService refreshTokenService;
+    private final UserRejoinRestrictionService rejoinRestrictionService;
 
     @Transactional(readOnly = true)
     public Page<AdminUserListItemResponse> list(String keyword, Pageable pageable) {
@@ -86,6 +87,23 @@ public class AdminUserService {
             .map(AdminUserStatusHistoryResponse::from);
     }
 
+    public void releaseRejoinRestriction(Long userId, Long adminUserId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new CustomException(ErrorType.USER_NOT_FOUND));
+
+        if (user.getStatus() != UserStatus.DELETED) {
+            throw new CustomException(ErrorType.USER_STATUS_CHANGE_NOT_ALLOWED,
+                "삭제된 사용자만 제한 해제가 가능합니다.");
+        }
+
+        if (user.getRejoinRestrictedUntil() == null
+            || user.getRejoinRestrictionReleasedAt() != null) {
+            return;
+        }
+
+        rejoinRestrictionService.releaseRestriction(user, adminUserId);
+    }
+
     private void validateStatusRequest(UserStatus status) {
         if (status == null) {
             throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "status 값이 필요합니다.");
@@ -123,7 +141,11 @@ public class AdminUserService {
         switch (Objects.requireNonNull(status)) {
             case ACTIVE -> user.activate();
             case BLOCKED -> user.block();
-            case DELETED -> user.delete();
+            case DELETED -> {
+                String email = user.getEmail();
+                user.delete();
+                rejoinRestrictionService.applyRestriction(user, email);
+            }
             case PENDING -> throw new CustomException(ErrorType.COMMON_INVALID_INPUT,
                 "PENDING 상태로는 변경할 수 없습니다.");
         }

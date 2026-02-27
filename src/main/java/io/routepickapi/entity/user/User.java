@@ -10,6 +10,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -53,6 +54,18 @@ public class User extends BaseEntity {
 
     @Column(name = "profile_complete", nullable = false)
     private boolean profileComplete = true;
+
+    @Column(name = "deleted_email_hash", length = 64)
+    private String deletedEmailHash;
+
+    @Column(name = "rejoin_restricted_until")
+    private LocalDateTime rejoinRestrictedUntil;
+
+    @Column(name = "rejoin_restriction_released_at")
+    private LocalDateTime rejoinRestrictionReleasedAt;
+
+    @Column(name = "rejoin_restriction_released_by")
+    private Long rejoinRestrictionReleasedBy;
 
     public User(String email, String passwordHash, String nickname) {
         this(email, passwordHash, nickname, UserAuthProvider.LOCAL);
@@ -130,5 +143,23 @@ public class User extends BaseEntity {
 
     public void markPending() {
         this.status = UserStatus.PENDING;
+    }
+
+    public void applyRejoinRestriction(String emailHash, LocalDateTime restrictedUntil) {
+        if (emailHash == null || emailHash.isBlank()) {
+            throw new IllegalArgumentException("invalid email hash");
+        }
+        if (restrictedUntil == null) {
+            throw new IllegalArgumentException("invalid restrictedUntil");
+        }
+        this.deletedEmailHash = emailHash;
+        this.rejoinRestrictedUntil = restrictedUntil;
+        this.rejoinRestrictionReleasedAt = null;
+        this.rejoinRestrictionReleasedBy = null;
+    }
+
+    public void releaseRejoinRestriction(Long adminUserId) {
+        this.rejoinRestrictionReleasedAt = LocalDateTime.now();
+        this.rejoinRestrictionReleasedBy = adminUserId;
     }
 }

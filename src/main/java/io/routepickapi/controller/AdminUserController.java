@@ -69,6 +69,19 @@ public class AdminUserController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(summary = "관리자 사용자 재가입 제한 해제", description = "관리자용 재가입 제한 해제")
+    @PatchMapping("/{id}/rejoin-restriction/release")
+    public ResponseEntity<Void> releaseRejoinRestriction(
+        @PathVariable @Min(1) Long id,
+        @AuthenticationPrincipal AuthUser adminUser
+    ) {
+        if (adminUser == null) {
+            throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
+        }
+        adminUserService.releaseRejoinRestriction(id, adminUser.id());
+        return ResponseEntity.noContent().build();
+    }
+
     @Operation(summary = "관리자 사용자 상태 변경 이력", description = "관리자용 사용자 상태 변경 이력 조회")
     @GetMapping("/{id}/status-history")
     public Page<AdminUserStatusHistoryResponse> statusHistory(
