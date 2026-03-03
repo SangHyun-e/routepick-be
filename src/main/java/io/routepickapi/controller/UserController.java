@@ -108,6 +108,25 @@ public class UserController {
     }
 
     @Operation(
+        summary = "내가 스크랩한 글 조회",
+        description = "현재 로그인한 사용자의 스크랩 목록 반환",
+        security = {@SecurityRequirement(name = "bearerAuth")}
+    )
+    @GetMapping("/me/scraps")
+    public Page<PostListItemResponse> myScraps(
+        @AuthenticationPrincipal AuthUser currentUser,
+        @ParameterObject
+        @PageableDefault(size = 3, sort = "createdAt", direction = Sort.Direction.DESC)
+        Pageable pageable
+    ) {
+        if (currentUser == null) {
+            throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
+        }
+        log.info("GET /users/me/scraps - userId={}", currentUser.id());
+        return userActivityService.getMyScraps(currentUser.id(), pageable);
+    }
+
+    @Operation(
         summary = "회원 탈퇴",
         description = "현재 로그인 사용자를 소프트 삭제 처리",
         security = {@SecurityRequirement(name = "bearerAuth")}

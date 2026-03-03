@@ -3,6 +3,7 @@ package io.routepickapi.service;
 import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.controller.PostController.LikeResponse;
+import io.routepickapi.controller.PostController.ScrapResponse;
 import io.routepickapi.dto.comment.CommentResponse;
 import io.routepickapi.dto.post.PostCreateRequest;
 import io.routepickapi.dto.post.PostListItemResponse;
@@ -12,6 +13,7 @@ import io.routepickapi.entity.comment.Comment;
 import io.routepickapi.entity.comment.CommentStatus;
 import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.post.PostLike;
+import io.routepickapi.entity.post.PostScrap;
 import io.routepickapi.entity.post.PostStatus;
 import io.routepickapi.entity.user.User;
 import io.routepickapi.entity.user.UserRole;
@@ -22,6 +24,7 @@ import io.routepickapi.repository.CommentRepository;
 import io.routepickapi.repository.PostLikeRepository;
 import io.routepickapi.repository.PostQueryRepository;
 import io.routepickapi.repository.PostRepository;
+import io.routepickapi.repository.PostScrapRepository;
 import io.routepickapi.repository.UserRepository;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,6 +49,7 @@ public class PostService {
     private final PostQueryRepository postQueryRepository; // 동적 검색용 QueryDSL 리포지토리
     private final UserRepository userRepository;
     private final PostLikeRepository postLikeRepository;
+    private final PostScrapRepository postScrapRepository;
     private final CommentQueryRepository commentQueryRepository;
     private final CommentRepository commentRepository;
     private final CommentLikeRepository commentLikeRepository;
@@ -82,7 +86,7 @@ public class PostService {
             saved.getId(), saved.getTitle(), saved.getRegion(), author.getId());
 
         // 생성 직후에는 좋아요 false
-        return PostResponse.from(saved, false);
+        return PostResponse.from(saved, false, false);
     }
 
     @Transactional(readOnly = true)
@@ -116,14 +120,17 @@ public class PostService {
             });
         }
 
-        // 로그인 사용자 - 좋아요 상태 일괄 조회 (N+1 방지)
+        // 로그인 사용자 - 좋아요/스크랩 상태 일괄 조회 (N+1 방지)
         Set<Long> likedPostIds = postLikeRepository.findLikedPostIdsByUserIdAndPostIds(postIds,
             currentUserId);
+        Set<Long> scrappedPostIds = postScrapRepository.findScrappedPostIdsByUserIdAndPostIds(
+            postIds, currentUserId);
 
         return posts.map(p -> {
             boolean liked = likedPostIds.contains(p.getId());
+            boolean scrapped = scrappedPostIds.contains(p.getId());
             int commentCount = commentCountMap.getOrDefault(p.getId(), 0);
-            return PostListItemResponse.from(p, liked, commentCount);
+            return PostListItemResponse.from(p, liked, scrapped, commentCount);
         });
     }
 
@@ -186,6 +193,9 @@ public class PostService {
         boolean isLiked =
             (currentUserId != null) && postLikeRepository.existsByPostIdAndUserId(post.getId(),
                 currentUserId);
+        boolean isScrapped =
+            (currentUserId != null) && postScrapRepository.existsByPostIdAndUserId(post.getId(),
+                currentUserId);
 
         // 댓글 수: ACTIVE (루트+대댓글 포함)
         Map<Long, Integer> commentCountMap = commentQueryRepository.countByPostIds(
@@ -199,7 +209,7 @@ public class PostService {
             .toList();
         log.info("[DETAIL] postId={}, commentCount={}, bestCount={}", post.getId(), commentCount,
             bestDtos.size());
-        return PostResponse.from(post, isLiked, commentCount, bestDtos);
+        return PostResponse.from(post, isLiked, isScrapped, commentCount, bestDtos);
     }
 
     @Transactional(readOnly = true)
@@ -228,10 +238,13 @@ public class PostService {
 
         Set<Long> likedPostIds = postLikeRepository.findLikedPostIdsByUserIdAndPostIds(postIds,
             currentUserId);
+        Set<Long> scrappedPostIds = postScrapRepository.findScrappedPostIdsByUserIdAndPostIds(
+            postIds, currentUserId);
 
         return page.map(p -> PostListItemResponse.from(
             p,
             likedPostIds.contains(p.getId()),
+            scrappedPostIds.contains(p.getId()),
             commentCountMap.getOrDefault(p.getId(), 0)
         ));
     }
@@ -277,7 +290,10 @@ public class PostService {
         boolean isLiked =
             (currentUserId != null) && postLikeRepository.existsByPostIdAndUserId(post.getId(),
                 currentUserId);
-        return PostResponse.from(post, isLiked);
+        boolean isScrapped =
+            (currentUserId != null) && postScrapRepository.existsByPostIdAndUserId(post.getId(),
+                currentUserId);
+        return PostResponse.from(post, isLiked, isScrapped);
     }
 
     @PreAuthorize("isAuthenticated()")
@@ -332,6 +348,33 @@ public class PostService {
         );
 
         return new LikeResponse(likeCount);
+    }
+
+    @PreAuthorize("isAuthenticated()")
+    public ScrapResponse toggleScrap(Long postId, Long userId) {
+        log.info("[SCRAP] toggle start - postId={}, userId={}", postId, userId);
+
+        Post post = postRepository.findById(postId)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+
+        if (post.getStatus() != PostStatus.ACTIVE) {
+            throw new CustomException(ErrorType.POST_NOT_FOUND);
+        }
+
+        User user = requireActiveUser(userId);
+
+        Optional<PostScrap> existingScrap = postScrapRepository.findByPostIdAndUserId(postId,
+            userId);
+
+        if (existingScrap.isPresent()) {
+            postScrapRepository.delete(existingScrap.get());
+            log.info("[SCRAP] removed - postId={}, userId={}", postId, userId);
+            return new ScrapResponse(false);
+        }
+
+        postScrapRepository.save(new PostScrap(post, user));
+        log.info("[SCRAP] added - postId={}, userId={}", postId, userId);
+        return new ScrapResponse(true);
     }
 
     @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")

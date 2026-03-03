@@ -7,6 +7,7 @@ import io.routepickapi.dto.post.PostListItemResponse;
 import io.routepickapi.entity.comment.Comment;
 import io.routepickapi.entity.comment.CommentStatus;
 import io.routepickapi.entity.post.Post;
+import io.routepickapi.entity.post.PostScrap;
 import io.routepickapi.entity.post.PostStatus;
 import io.routepickapi.entity.user.User;
 import io.routepickapi.entity.user.UserStatus;
@@ -14,6 +15,7 @@ import io.routepickapi.repository.CommentQueryRepository;
 import io.routepickapi.repository.CommentRepository;
 import io.routepickapi.repository.PostLikeRepository;
 import io.routepickapi.repository.PostRepository;
+import io.routepickapi.repository.PostScrapRepository;
 import io.routepickapi.repository.UserRepository;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,7 @@ public class UserActivityService {
     private final UserRepository userRepository;
     private final PostRepository postRepository;
     private final PostLikeRepository postLikeRepository;
+    private final PostScrapRepository postScrapRepository;
     private final CommentRepository commentRepository;
     private final CommentQueryRepository commentQueryRepository;
 
@@ -52,11 +55,39 @@ public class UserActivityService {
         Set<Long> likedPostIds = postIds.isEmpty()
             ? Set.of()
             : postLikeRepository.findLikedPostIdsByUserIdAndPostIds(postIds, user.getId());
+        Set<Long> scrappedPostIds = postIds.isEmpty()
+            ? Set.of()
+            : postScrapRepository.findScrappedPostIdsByUserIdAndPostIds(postIds, user.getId());
 
         return posts.map(post -> PostListItemResponse.from(
             post,
             likedPostIds.contains(post.getId()),
+            scrappedPostIds.contains(post.getId()),
             commentCountMap.getOrDefault(post.getId(), 0)
+        ));
+    }
+
+    public Page<PostListItemResponse> getMyScraps(Long userId, Pageable pageable) {
+        User user = requireActiveUser(userId);
+
+        Page<PostScrap> scraps = postScrapRepository.findByUserIdAndPostStatusOrderByCreatedAtDesc(
+            user.getId(), PostStatus.ACTIVE, pageable);
+
+        List<Long> postIds = scraps.getContent().stream()
+            .map(scrap -> scrap.getPost().getId())
+            .toList();
+
+        Map<Long, Integer> commentCountMap = commentQueryRepository.countByPostIds(postIds,
+            CommentStatus.ACTIVE);
+        Set<Long> likedPostIds = postIds.isEmpty()
+            ? Set.of()
+            : postLikeRepository.findLikedPostIdsByUserIdAndPostIds(postIds, user.getId());
+
+        return scraps.map(scrap -> PostListItemResponse.from(
+            scrap.getPost(),
+            likedPostIds.contains(scrap.getPost().getId()),
+            true,
+            commentCountMap.getOrDefault(scrap.getPost().getId(), 0)
         ));
     }
 

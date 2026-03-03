@@ -108,6 +108,17 @@ public class PostController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(summary = "스크랩 토글", description = "JWT 인증 필요")
+    @PostMapping("/{id:\\d+}/scrap")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ScrapResponse> toggleScrap(
+        @PathVariable(name = "id") @Min(1) Long id,
+        @AuthenticationPrincipal AuthUser currentUser
+    ) {
+        ScrapResponse response = postService.toggleScrap(id, currentUser.id());
+        return ResponseEntity.ok(response);
+    }
+
     @DeleteMapping("/{id:\\d+}")
     public ResponseEntity<Void> softDelete(@PathVariable(name = "id") @Min(1) Long id) {
         postService.softDelete(id);
@@ -127,6 +138,10 @@ public class PostController {
     }
 
     public record LikeResponse(int likeCount) {
+
+    }
+
+    public record ScrapResponse(boolean scrapped) {
 
     }
 
