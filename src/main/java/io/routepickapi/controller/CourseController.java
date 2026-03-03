@@ -48,8 +48,10 @@ public class CourseController {
         return courseRecommendationService.recommend(request);
     }
 
-    @Operation(summary = "크루저 큐레이션", description = "추천 코스 기반으로 크루저 큐레이션을 생성합니다.")
+    @Operation(summary = "크루저 큐레이션", description = "추천 코스 기반으로 크루저 큐레이션을 생성합니다.",
+        security = {@SecurityRequirement(name = "bearerAuth")})
     @PostMapping("/curation")
+    @PreAuthorize("isAuthenticated()")
     public CourseCurationResponse curate(
         @Valid @RequestBody CourseCurationRequest request,
         @AuthenticationPrincipal AuthUser currentUser,
