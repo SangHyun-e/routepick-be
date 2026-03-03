@@ -66,6 +66,7 @@ public class SecurityConfig {
                 ).permitAll()
                 .requestMatchers(HttpMethod.POST, "/auth/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/auth/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/drive/plan").permitAll()
                 .requestMatchers(HttpMethod.GET, "/posts/**", "/posts/*/comments/**", "/places/**")
                 .permitAll()
                 .anyRequest().authenticated()
