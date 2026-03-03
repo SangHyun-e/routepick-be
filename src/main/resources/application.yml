@@ -36,6 +36,8 @@ llm:
   api-url: ${LLM_API_URL:}
   api-key: ${LLM_API_KEY:}
   model: ${LLM_MODEL:gpt-4o-mini}
+  curation:
+    daily-limit: ${LLM_CURATION_DAILY_LIMIT:5}
 
 aws:
   region: ${AWS_REGION:ap-northeast-2}
