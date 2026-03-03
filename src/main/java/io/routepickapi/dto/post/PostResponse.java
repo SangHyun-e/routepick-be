@@ -28,6 +28,7 @@ public record PostResponse(
     Long authorId,
     String authorNickname,
     Boolean isLikedByCurrentUser,
+    Boolean isScrappedByCurrentUser,
     int commentCount,
     List<CommentResponse> bestComments
 ) {
@@ -56,12 +57,14 @@ public record PostResponse(
             a != null ? a.getId() : null,
             a != null ? a.getNickname() : null,
             null,
+            null,
             0,
             List.of()
         );
     }
 
-    public static PostResponse from(Post p, boolean isLikedByCurrentUser) {
+    public static PostResponse from(Post p, boolean isLikedByCurrentUser,
+        boolean isScrappedByCurrentUser) {
         List<String> safeTags = new ArrayList<>(p.getTags());
         User a = p.getAuthor();
 
@@ -85,13 +88,14 @@ public record PostResponse(
             a != null ? a.getId() : null,
             a != null ? a.getNickname() : null,
             isLikedByCurrentUser,
+            isScrappedByCurrentUser,
             0,
             List.of()
         );
     }
 
-    public static PostResponse from(Post p, boolean isLikedByCurrentUser, int commentCount,
-        List<CommentResponse> bestComments) {
+    public static PostResponse from(Post p, boolean isLikedByCurrentUser,
+        boolean isScrappedByCurrentUser, int commentCount, List<CommentResponse> bestComments) {
         List<String> safeTags = new ArrayList<>(p.getTags());
         User a = p.getAuthor();
 
@@ -117,6 +121,7 @@ public record PostResponse(
             a != null ? a.getId() : null,
             a != null ? a.getNickname() : null,
             isLikedByCurrentUser,
+            isScrappedByCurrentUser,
             commentCount,
             safeBest
         );

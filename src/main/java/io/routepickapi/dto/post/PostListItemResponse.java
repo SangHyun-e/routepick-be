@@ -18,6 +18,7 @@ public record PostListItemResponse(
     Long authorId,
     String authorNickname,
     Boolean isLikedByCurrentUser,
+    Boolean isScrappedByCurrentUser,
     int commentCount
 
 ) {
@@ -37,12 +38,13 @@ public record PostListItemResponse(
             a != null ? a.getId() : null,
             a != null ? a.getNickname() : null,
             null,
+            null,
             commentCount
         );
     }
 
-    public static PostListItemResponse from(Post p, boolean isLikedByCurrentUser,
-        int commentCount) {
+    public static PostListItemResponse from(Post p, Boolean isLikedByCurrentUser,
+        Boolean isScrappedByCurrentUser, int commentCount) {
         User a = p.getAuthor();
         return new PostListItemResponse(
             p.getId(),
@@ -56,7 +58,8 @@ public record PostListItemResponse(
             p.getCreatedAt(),
             a != null ? a.getId() : null,
             a != null ? a.getNickname() : null,
-            isLikedByCurrentUser,  // ← 실제 좋아요 상태
+            isLikedByCurrentUser,
+            isScrappedByCurrentUser,
             commentCount
         );
     }
