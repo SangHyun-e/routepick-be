@@ -2,7 +2,7 @@ package io.routepickapi.service;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.routepickapi.dto.drive.DrivePlanLlmResponse;
+import io.routepickapi.dto.course.CourseCurationResponse;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +17,7 @@ import org.springframework.web.client.RestClientException;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class DrivePlanLlmClient {
+public class CruiserLlmClient {
 
     private static final String JSON_RESPONSE_FORMAT = "json_object";
 
@@ -33,7 +33,7 @@ public class DrivePlanLlmClient {
     @Value("${llm.model:gpt-4o-mini}")
     private String model;
 
-    public Optional<DrivePlanLlmResponse> requestPlan(String prompt) {
+    public Optional<CourseCurationResponse> requestCuration(String prompt) {
         if (prompt == null || prompt.isBlank()) {
             return Optional.empty();
         }
@@ -63,12 +63,12 @@ public class DrivePlanLlmClient {
                 return Optional.empty();
             }
 
-            ChatMessage message = response.choices().get(0).message();
+            ChatMessage message = response.choices().getFirst().message();
             if (message == null || message.content() == null || message.content().isBlank()) {
                 return Optional.empty();
             }
 
-            return Optional.of(objectMapper.readValue(message.content(), DrivePlanLlmResponse.class));
+            return Optional.of(objectMapper.readValue(message.content(), CourseCurationResponse.class));
         } catch (RestClientException ex) {
             log.warn("LLM request failed", ex);
             return Optional.empty();

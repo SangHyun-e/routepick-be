@@ -1,14 +1,18 @@
 package io.routepickapi.controller;
 
+import io.routepickapi.dto.course.CourseCurationRequest;
+import io.routepickapi.dto.course.CourseCurationResponse;
 import io.routepickapi.dto.course.CourseRecommendationRequest;
 import io.routepickapi.dto.course.CourseRecommendationResponse;
 import io.routepickapi.dto.course.CourseRecommendationSaveRequest;
 import io.routepickapi.dto.course.CourseRecommendationSaveResponse;
 import io.routepickapi.security.AuthUser;
+import io.routepickapi.service.CourseCurationService;
 import io.routepickapi.service.CourseRecommendationSaveService;
 import io.routepickapi.service.CourseRecommendationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +37,7 @@ public class CourseController {
 
     private final CourseRecommendationService courseRecommendationService;
     private final CourseRecommendationSaveService courseRecommendationSaveService;
+    private final CourseCurationService courseCurationService;
 
     @Operation(summary = "드라이브 코스 추천", description = "출발지/도착지/테마 기반으로 코스를 추천합니다.")
     @PostMapping("/recommend")
@@ -41,6 +46,18 @@ public class CourseController {
     ) {
         log.info("POST /courses/recommend - theme={}", request.theme());
         return courseRecommendationService.recommend(request);
+    }
+
+    @Operation(summary = "크루저 큐레이션", description = "추천 코스 기반으로 크루저 큐레이션을 생성합니다.")
+    @PostMapping("/curation")
+    public CourseCurationResponse curate(
+        @Valid @RequestBody CourseCurationRequest request,
+        @AuthenticationPrincipal AuthUser currentUser,
+        HttpServletRequest httpServletRequest
+    ) {
+        String rateLimitKey = resolveRateLimitKey(currentUser, httpServletRequest);
+        log.info("POST /courses/curation - key={}", rateLimitKey);
+        return courseCurationService.curate(request, rateLimitKey);
     }
 
     @Operation(summary = "추천 코스 저장", description = "추천 결과를 내 저장 목록에 추가합니다.",
@@ -67,5 +84,24 @@ public class CourseController {
     ) {
         log.info("GET /courses/saved - userId={}", currentUser.id());
         return courseRecommendationSaveService.listSaved(currentUser.id(), pageable);
+    }
+
+    private String resolveRateLimitKey(AuthUser currentUser, HttpServletRequest request) {
+        if (currentUser != null) {
+            return "user:" + currentUser.id();
+        }
+
+        if (request == null) {
+            return "anonymous";
+        }
+
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            String ip = forwarded.split(",")[0].trim();
+            return ip.isBlank() ? "anonymous" : "ip:" + ip;
+        }
+
+        String remoteAddr = request.getRemoteAddr();
+        return remoteAddr == null || remoteAddr.isBlank() ? "anonymous" : "ip:" + remoteAddr;
     }
 }
