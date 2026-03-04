@@ -54,6 +54,7 @@ io.routepickapi
 - `LLM_API_KEY`: LLM API 키
 - `LLM_MODEL`: LLM 모델 이름 (기본값 `gpt-4o-mini`)
 - `LLM_CURATION_DAILY_LIMIT`: 크루저 큐레이션 일일 요청 제한 (기본값 `5`)
+- `KMA_SERVICE_KEY`: 기상청 단기예보 API 키
 - `AWS_REGION`: AWS 리전 (기본값 `ap-northeast-2`)
 - `AWS_S3_BUCKET`: 이미지 업로드용 S3 버킷 이름
 - `SMTP_HOST`: SMTP 호스트 (기본값 `smtp.gmail.com`)
