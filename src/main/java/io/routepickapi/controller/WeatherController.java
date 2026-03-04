@@ -28,7 +28,14 @@ public class WeatherController {
         @RequestParam(defaultValue = "false") boolean fallback
     ) {
         DriveWeatherResponse response = driveWeatherService.getDriveMessage(lat, lng, fallback);
-        log.info("GET /weather/drive-message - fallback={}, message={}", fallback, response.message());
+        log.info(
+            "GET /weather/drive-message - lat={}, lng={}, fallback={}, usedFallbackLocation={}, message={}",
+            lat,
+            lng,
+            fallback,
+            response.usedFallbackLocation(),
+            response.message()
+        );
         return response;
     }
 }
