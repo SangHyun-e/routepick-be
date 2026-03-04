@@ -303,7 +303,8 @@ public class DriveWeatherService {
             if (cached == null || cached.isBlank()) {
                 return null;
             }
-            return objectMapper.readValue(cached, DriveWeatherResponse.class);
+            DriveWeatherResponse response = objectMapper.readValue(cached, DriveWeatherResponse.class);
+            return shouldCache(response) ? response : null;
         } catch (Exception ex) {
             log.warn("Failed to parse cached weather", ex);
             return null;
