@@ -74,15 +74,11 @@ public class DriveWeatherService {
             BaseDateTime nowBase = baseTimeCalculator.forUltraShortNow(now);
             BaseDateTime forecastBase = baseTimeCalculator.forUltraShortForecast(now);
 
-            List<WeatherItem> nowItems = weatherRepository.fetchUltraShortNow(
-                nowBase,
-                gridPoint.nx(),
-                gridPoint.ny()
-            );
-            List<WeatherItem> forecastItems = weatherRepository.fetchUltraShortForecast(
+            List<WeatherItem> nowItems = fetchNowItemsWithFallback(nowBase, now, gridPoint);
+            List<WeatherItem> forecastItems = fetchForecastItemsWithFallback(
                 forecastBase,
-                gridPoint.nx(),
-                gridPoint.ny()
+                now,
+                gridPoint
             );
 
             WeatherSnapshot snapshot = buildSnapshot(nowItems, forecastItems, now);
@@ -106,6 +102,66 @@ public class DriveWeatherService {
             log.warn("Drive weather fallback due to unexpected error", ex);
             return DriveWeatherResponse.fallback(usedFallbackLocation);
         }
+    }
+
+    private List<WeatherItem> fetchNowItemsWithFallback(
+        BaseDateTime baseDateTime,
+        LocalDateTime now,
+        GridPoint gridPoint
+    ) {
+        List<WeatherItem> items = weatherRepository.fetchUltraShortNow(
+            baseDateTime,
+            gridPoint.nx(),
+            gridPoint.ny()
+        );
+        if (!items.isEmpty()) {
+            return items;
+        }
+
+        BaseDateTime fallbackBase = baseTimeCalculator.forUltraShortNow(now.minusMinutes(90));
+        List<WeatherItem> fallbackItems = weatherRepository.fetchUltraShortNow(
+            fallbackBase,
+            gridPoint.nx(),
+            gridPoint.ny()
+        );
+        if (fallbackItems.isEmpty()) {
+            log.warn("Weather nowcast empty: baseDate={}, baseTime={}, nx={}, ny={}",
+                baseDateTime.baseDate(),
+                baseDateTime.baseTime(),
+                gridPoint.nx(),
+                gridPoint.ny());
+        }
+        return fallbackItems;
+    }
+
+    private List<WeatherItem> fetchForecastItemsWithFallback(
+        BaseDateTime baseDateTime,
+        LocalDateTime now,
+        GridPoint gridPoint
+    ) {
+        List<WeatherItem> items = weatherRepository.fetchUltraShortForecast(
+            baseDateTime,
+            gridPoint.nx(),
+            gridPoint.ny()
+        );
+        if (!items.isEmpty()) {
+            return items;
+        }
+
+        BaseDateTime fallbackBase = baseTimeCalculator.forUltraShortForecast(now.minusMinutes(90));
+        List<WeatherItem> fallbackItems = weatherRepository.fetchUltraShortForecast(
+            fallbackBase,
+            gridPoint.nx(),
+            gridPoint.ny()
+        );
+        if (fallbackItems.isEmpty()) {
+            log.warn("Weather forecast empty: baseDate={}, baseTime={}, nx={}, ny={}",
+                baseDateTime.baseDate(),
+                baseDateTime.baseTime(),
+                gridPoint.nx(),
+                gridPoint.ny());
+        }
+        return fallbackItems;
     }
 
     private WeatherSnapshot buildSnapshot(
