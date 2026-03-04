@@ -1,19 +1,20 @@
-package io.routepickapi.weather;
+package io.routepickapi.repository;
 
 import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
+import io.routepickapi.weather.WeatherBaseTimeCalculator.BaseDateTime;
 import java.util.Collections;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Repository;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 @Slf4j
-@Component
-public class WeatherClient {
+@Repository
+public class KmaWeatherRepository implements WeatherRepository {
 
     private static final String BASE_URL = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0";
     private static final int DEFAULT_ROWS = 1000;
@@ -24,16 +25,18 @@ public class WeatherClient {
     @Value("${weather.kma.service-key:}")
     private String serviceKey;
 
+    @Override
     public List<WeatherItem> fetchUltraShortNow(
-        WeatherBaseTimeCalculator.BaseDateTime baseDateTime,
+        BaseDateTime baseDateTime,
         int nx,
         int ny
     ) {
         return request("/getUltraSrtNcst", baseDateTime, nx, ny);
     }
 
+    @Override
     public List<WeatherItem> fetchUltraShortForecast(
-        WeatherBaseTimeCalculator.BaseDateTime baseDateTime,
+        BaseDateTime baseDateTime,
         int nx,
         int ny
     ) {
@@ -42,7 +45,7 @@ public class WeatherClient {
 
     private List<WeatherItem> request(
         String path,
-        WeatherBaseTimeCalculator.BaseDateTime baseDateTime,
+        BaseDateTime baseDateTime,
         int nx,
         int ny
     ) {
@@ -93,15 +96,6 @@ public class WeatherClient {
         if (serviceKey == null || serviceKey.isBlank()) {
             throw new CustomException(ErrorType.COMMON_INTERNAL, "기상청 API 키가 설정되지 않았습니다.");
         }
-    }
-
-    public record WeatherItem(
-        String category,
-        String obsrValue,
-        String fcstValue,
-        String fcstDate,
-        String fcstTime
-    ) {
     }
 
     public record WeatherApiResponse(WeatherResponse response) {

@@ -1,11 +1,15 @@
-package io.routepickapi.weather;
+package io.routepickapi.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.routepickapi.common.error.CustomException;
+import io.routepickapi.dto.weather.DriveWeatherResponse;
+import io.routepickapi.repository.WeatherRepository;
+import io.routepickapi.repository.WeatherRepository.WeatherItem;
+import io.routepickapi.weather.GridConverter;
 import io.routepickapi.weather.GridConverter.GridPoint;
+import io.routepickapi.weather.WeatherBaseTimeCalculator;
 import io.routepickapi.weather.WeatherBaseTimeCalculator.BaseDateTime;
-import io.routepickapi.weather.WeatherClient.WeatherItem;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -36,7 +40,7 @@ public class DriveWeatherService {
 
     private final GridConverter gridConverter = new GridConverter();
     private final WeatherBaseTimeCalculator baseTimeCalculator = new WeatherBaseTimeCalculator();
-    private final WeatherClient weatherClient;
+    private final WeatherRepository weatherRepository;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
 
@@ -70,8 +74,12 @@ public class DriveWeatherService {
             BaseDateTime nowBase = baseTimeCalculator.forUltraShortNow(now);
             BaseDateTime forecastBase = baseTimeCalculator.forUltraShortForecast(now);
 
-            List<WeatherItem> nowItems = weatherClient.fetchUltraShortNow(nowBase, gridPoint.nx(), gridPoint.ny());
-            List<WeatherItem> forecastItems = weatherClient.fetchUltraShortForecast(
+            List<WeatherItem> nowItems = weatherRepository.fetchUltraShortNow(
+                nowBase,
+                gridPoint.nx(),
+                gridPoint.ny()
+            );
+            List<WeatherItem> forecastItems = weatherRepository.fetchUltraShortForecast(
                 forecastBase,
                 gridPoint.nx(),
                 gridPoint.ny()

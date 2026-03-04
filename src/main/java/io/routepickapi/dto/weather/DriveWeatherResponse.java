@@ -1,4 +1,4 @@
-package io.routepickapi.weather;
+package io.routepickapi.dto.weather;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 

@@ -1,5 +1,7 @@
-package io.routepickapi.weather;
+package io.routepickapi.controller;
 
+import io.routepickapi.dto.weather.DriveWeatherResponse;
+import io.routepickapi.service.DriveWeatherService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import lombok.RequiredArgsConstructor;
