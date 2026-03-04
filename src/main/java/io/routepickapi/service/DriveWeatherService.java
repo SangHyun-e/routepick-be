@@ -18,7 +18,6 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -235,41 +234,40 @@ public class DriveWeatherService {
 
         String message;
         if (isSnow(precipitationType)) {
-            message = "❄️ 눈이 내려요. 노면 결빙 조심하세요.";
+            message = "눈이 내려요. 노면 결빙 조심하세요.";
         } else if (isRain(precipitationType)) {
-            message = "🌧️ 비가 내려요. 미끄럼 주의!";
+            message = "비가 내려요. 미끄럼 주의!";
         } else if (windSpeed >= 10.0) {
-            message = "💨 바람이 꽤 강해요. 고속 주행은 주의하세요.";
+            message = "바람이 꽤 강해요. 고속 주행은 주의하세요.";
         } else if (precipitationType == 0 && sky == 1 && windSpeed <= 6.0) {
-            message = "☀️ 오늘은 드라이브하기 딱 좋은 날씨예요!";
+            message = "오늘은 드라이브하기 딱 좋은 날씨예요!";
         } else if (sky == 4) {
-            message = "☁️ 하늘은 흐리지만 감성 드라이브에 어울려요.";
+            message = "하늘은 흐리지만 감성 드라이브에 어울려요.";
         } else if (sky == 3) {
-            message = "⛅️ 구름이 많아요. 살짝 서늘할 수 있어요.";
+            message = "구름이 많아요. 살짝 서늘할 수 있어요.";
         } else {
-            message = "🚗 오늘도 안전운전하며 드라이브 즐겨보세요!";
+            message = "오늘도 안전운전하며 드라이브 즐겨보세요!";
         }
 
-        message = appendTemperature(message, snapshot.temperature());
         message = appendTimeHint(message, hour);
         return message;
     }
 
-    private String appendTemperature(String message, Double temperature) {
-        if (temperature == null) {
-            return message;
-        }
-
-        long rounded = Math.round(temperature);
-        return message + String.format(Locale.KOREAN, " 🌡️ 현재 기온은 %d℃예요.", rounded);
-    }
-
     private String appendTimeHint(String message, int hour) {
+        if (hour >= 0 && hour <= 5) {
+            return message + " 새벽 드라이브라면 졸음운전 조심하세요.";
+        }
+        if (hour >= 6 && hour <= 10) {
+            return message + " 상쾌한 아침 드라이브 어때요?";
+        }
+        if (hour >= 11 && hour <= 15) {
+            return message + " 나들이하기 좋은 시간대예요.";
+        }
         if (hour >= 16 && hour <= 19) {
-            return message + " 🌇 해질녘 드라이브 추천해요.";
+            return message + " 해질녘 드라이브 추천해요.";
         }
         if (hour >= 20 && hour <= 23) {
-            return message + " 🌙 야경 코스 어떠세요?";
+            return message + " 야경 코스 어떠세요?";
         }
         return message;
     }
