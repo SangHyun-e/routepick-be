@@ -39,6 +39,10 @@ llm:
   curation:
     daily-limit: ${LLM_CURATION_DAILY_LIMIT:5}
 
+weather:
+  kma:
+    service-key: ${KMA_SERVICE_KEY:}
+
 aws:
   region: ${AWS_REGION:ap-northeast-2}
   s3:
