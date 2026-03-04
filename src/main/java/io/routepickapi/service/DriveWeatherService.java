@@ -235,24 +235,23 @@ public class DriveWeatherService {
 
         String message;
         if (isSnow(precipitationType)) {
-            message = "눈이 내려요. 도로 결빙에 주의하세요.";
+            message = "❄️ 눈이 내려요. 노면 결빙 조심하세요.";
         } else if (isRain(precipitationType)) {
-            message = "비가 내려 노면이 미끄러워요. 안전운전하세요.";
+            message = "🌧️ 비가 내려요. 미끄럼 주의!";
         } else if (windSpeed >= 10.0) {
-            message = "바람이 강해요. 고속 주행은 주의하세요.";
+            message = "💨 바람이 꽤 강해요. 고속 주행은 주의하세요.";
         } else if (precipitationType == 0 && sky == 1 && windSpeed <= 6.0) {
-            message = "오늘은 드라이브하기 좋은 날씨네요.";
+            message = "☀️ 오늘은 드라이브하기 딱 좋은 날씨예요!";
         } else if (sky == 4) {
-            message = "하늘은 흐리지만 감성 드라이브에 어울려요.";
+            message = "☁️ 하늘은 흐리지만 감성 드라이브에 어울려요.";
         } else if (sky == 3) {
-            message = "구름이 많아요. 서늘할 수 있으니 겉옷 챙기세요.";
+            message = "⛅️ 구름이 많아요. 살짝 서늘할 수 있어요.";
         } else {
-            message = "오늘도 안전운전하며 드라이브 즐겨보세요.";
+            message = "🚗 오늘도 안전운전하며 드라이브 즐겨보세요!";
         }
 
         message = appendTemperature(message, snapshot.temperature());
         message = appendTimeHint(message, hour);
-        message = appendDustNote(message, precipitationType, sky);
         return message;
     }
 
@@ -262,25 +261,15 @@ public class DriveWeatherService {
         }
 
         long rounded = Math.round(temperature);
-        return message + String.format(Locale.KOREAN, " 현재 기온은 %d℃예요.", rounded);
+        return message + String.format(Locale.KOREAN, " 🌡️ 현재 기온은 %d℃예요.", rounded);
     }
 
     private String appendTimeHint(String message, int hour) {
         if (hour >= 16 && hour <= 19) {
-            return message + " 해질녘 드라이브 추천해요.";
+            return message + " 🌇 해질녘 드라이브 추천해요.";
         }
         if (hour >= 20 && hour <= 23) {
-            return message + " 야경 코스 어떠세요?";
-        }
-        return message;
-    }
-
-    private String appendDustNote(String message, int precipitationType, int skyStatus) {
-        if (precipitationType != 0) {
-            return message;
-        }
-        if (skyStatus == 1 || skyStatus == 3) {
-            return message + " 미세먼지는 출발 전에 한 번 확인해보세요.";
+            return message + " 🌙 야경 코스 어떠세요?";
         }
         return message;
     }

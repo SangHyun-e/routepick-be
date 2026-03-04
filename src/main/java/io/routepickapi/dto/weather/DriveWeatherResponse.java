@@ -13,7 +13,7 @@ public record DriveWeatherResponse(
 ) {
     public static DriveWeatherResponse fallback(boolean usedFallbackLocation) {
         return new DriveWeatherResponse(
-            "날씨 정보를 불러오지 못했어요. 그래도 안전운전!",
+            "🙌 날씨 정보를 불러오지 못했어요. 그래도 안전운전!",
             null,
             null,
             null,
