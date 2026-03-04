@@ -50,6 +50,7 @@ public class KmaWeatherRepository implements WeatherRepository {
         int ny
     ) {
         validateServiceKey();
+        boolean encodedKey = serviceKey.contains("%");
 
         try {
             WeatherApiResponse response = restClient.get()
@@ -63,7 +64,7 @@ public class KmaWeatherRepository implements WeatherRepository {
                     .queryParam("base_time", baseDateTime.baseTime())
                     .queryParam("nx", nx)
                     .queryParam("ny", ny)
-                    .build())
+                    .build(encodedKey))
                 .retrieve()
                 .body(WeatherApiResponse.class);
 
