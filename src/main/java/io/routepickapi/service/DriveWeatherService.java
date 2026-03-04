@@ -64,7 +64,9 @@ public class DriveWeatherService {
         }
 
         DriveWeatherResponse response = fetchDriveWeather(gridPoint, usedFallbackLocation);
-        writeCache(cacheKey, response.withUsedFallbackLocation(false));
+        if (shouldCache(response)) {
+            writeCache(cacheKey, response.withUsedFallbackLocation(false));
+        }
         return response;
     }
 
@@ -315,6 +317,16 @@ public class DriveWeatherService {
         } catch (JsonProcessingException ex) {
             log.warn("Failed to cache weather payload", ex);
         }
+    }
+
+    private boolean shouldCache(DriveWeatherResponse response) {
+        if (response == null) {
+            return false;
+        }
+        return response.temperature() != null
+            || response.precipitationType() != null
+            || response.skyStatus() != null
+            || response.windSpeed() != null;
     }
 
     private record WeatherSnapshot(
