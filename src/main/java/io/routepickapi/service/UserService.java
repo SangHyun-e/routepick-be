@@ -96,7 +96,7 @@ public class UserService {
             if (userRepository.existsByNickname(nickname)) {
                 throw new CustomException(ErrorType.USER_NICKNAME_EXISTS);
             }
-            user.updateNickname(nickname, now);
+            user.updateNickname(nickname, now, null);
         }
         user.markProfileComplete();
 
