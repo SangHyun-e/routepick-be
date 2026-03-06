@@ -2,6 +2,7 @@ package io.routepickapi.controller;
 
 import io.routepickapi.dto.comment.CommentCreateRequest;
 import io.routepickapi.dto.comment.CommentLikeToggleResponse;
+import io.routepickapi.dto.comment.CommentPositionResponse;
 import io.routepickapi.dto.comment.CommentResponse;
 import io.routepickapi.dto.comment.CommentUpdateRequest;
 import io.routepickapi.entity.comment.CommentDeletedBy;
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @Slf4j
@@ -83,6 +85,18 @@ public class CommentController {
         log.debug("GET /posts/{}/comments page={}, size={}", postId, pageable.getPageNumber(),
             pageable.getPageSize());
         return commentService.listRootsWithReplies(postId, pageable);
+    }
+
+    @Operation(summary = "댓글 위치 조회", description = "댓글이 포함된 페이지 정보를 제공합니다.")
+    @GetMapping("/{postId}/comments/{commentId}/position")
+    public CommentPositionResponse position(
+        @Parameter(description = "게시글 ID")
+        @PathVariable(name = "postId") @Min(1) Long postId,
+        @Parameter(description = "댓글 ID")
+        @PathVariable(name = "commentId") @Min(1) Long commentId,
+        @RequestParam(name = "size", defaultValue = "20") @Min(1) int size
+    ) {
+        return commentService.getPosition(postId, commentId, size);
     }
 
     @Operation(summary = "댓글 좋아요 토글", description = "특정 게시글 내 댓글의 좋아요 추가/취소, 현재 좋아요 수 반환 (JWT 인증 필요)")

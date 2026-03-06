@@ -9,6 +9,7 @@ import io.routepickapi.entity.comment.Comment;
 import io.routepickapi.entity.comment.CommentStatus;
 import io.routepickapi.entity.comment.QComment;
 import io.routepickapi.entity.user.QUser;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -149,5 +150,30 @@ public class CommentRepositoryImpl implements CommentRepositoryCustom {
             .where(where);
 
         return PageableExecutionUtils.getPage(content, pageable, countQuery::fetchOne);
+    }
+
+    @Override
+    public long countRootsBefore(Long postId, LocalDateTime createdAt) {
+        if (postId == null || createdAt == null) {
+            return 0L;
+        }
+
+        BooleanBuilder where = new BooleanBuilder();
+        where.and(comment.post.id.eq(postId));
+        where.and(comment.parent.isNull());
+
+        BooleanBuilder statusPolicy = new BooleanBuilder();
+        statusPolicy.or(comment.status.eq(CommentStatus.ACTIVE));
+        statusPolicy.or(comment.status.eq(CommentStatus.DELETED));
+        where.and(statusPolicy);
+        where.and(comment.createdAt.gt(createdAt));
+
+        Long count = queryFactory
+            .select(comment.count())
+            .from(comment)
+            .where(where)
+            .fetchOne();
+
+        return count != null ? count : 0L;
     }
 }

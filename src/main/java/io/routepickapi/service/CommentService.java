@@ -4,6 +4,7 @@ import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.comment.CommentCreateRequest;
 import io.routepickapi.dto.comment.CommentLikeToggleResponse;
+import io.routepickapi.dto.comment.CommentPositionResponse;
 import io.routepickapi.dto.comment.CommentResponse;
 import io.routepickapi.dto.comment.CommentUpdateRequest;
 import io.routepickapi.entity.comment.Comment;
@@ -146,6 +147,27 @@ public class CommentService {
                 childrenMap.getOrDefault(root.getId(), List.of())
             )
         );
+    }
+
+    @Transactional(readOnly = true)
+    public CommentPositionResponse getPosition(Long postId, Long commentId, int size) {
+        if (postId == null || commentId == null) {
+            throw new CustomException(ErrorType.COMMENT_NOT_FOUND);
+        }
+        int pageSize = size > 0 ? size : 20;
+
+        Comment comment = commentRepository.findById(commentId)
+            .orElseThrow(() -> new CustomException(ErrorType.COMMENT_NOT_FOUND));
+
+        if (!comment.getPost().getId().equals(postId)) {
+            throw new CustomException(ErrorType.COMMENT_NOT_FOUND);
+        }
+
+        Comment root = resolveRootParent(comment);
+        long beforeCount = commentRepository.countRootsBefore(postId, root.getCreatedAt());
+        int page = (int) (beforeCount / pageSize);
+
+        return new CommentPositionResponse(page, root.getId());
     }
 
     @Transactional
