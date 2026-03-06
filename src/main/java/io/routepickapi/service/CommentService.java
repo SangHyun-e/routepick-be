@@ -281,7 +281,7 @@ public class CommentService {
                 post.getId(),
                 actorId,
                 actorNickname,
-                null
+                String.valueOf(comment.getId())
             );
             notifiedUserIds.add(postAuthor.getId());
         }
@@ -300,7 +300,7 @@ public class CommentService {
                     post.getId(),
                     actorId,
                     actorNickname,
-                    null
+                    String.valueOf(comment.getId())
                 );
                 notifiedUserIds.add(parentAuthor.getId());
             }
@@ -324,7 +324,7 @@ public class CommentService {
                 post.getId(),
                 actorId,
                 actorNickname,
-                null
+                String.valueOf(comment.getId())
             );
         }
     }
