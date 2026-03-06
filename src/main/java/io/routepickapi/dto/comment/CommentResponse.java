@@ -19,6 +19,8 @@ public record CommentResponse(
     LocalDateTime updatedAt,
     Long authorId,
     String authorNickname,
+    Long replyTargetId,
+    String replyTargetNickname,
     List<CommentResponse> replies
 ) {
 
@@ -56,6 +58,23 @@ public record CommentResponse(
         return (c.getParent() == null) ? null : c.getParent().getId();
     }
 
+    private static Long toReplyTargetId(Comment c) {
+        Comment target = c.getReplyTarget();
+        return target != null ? target.getId() : null;
+    }
+
+    private static String toReplyTargetNickname(Comment c) {
+        Comment target = c.getReplyTarget();
+        if (target == null) {
+            return null;
+        }
+        if (target.getStatus() == CommentStatus.DELETED) {
+            return "알 수 없음";
+        }
+        User author = target.getAuthor();
+        return author != null ? author.getNickname() : "익명";
+    }
+
     public static CommentResponse from(Comment c) {
         return new CommentResponse(
             c.getId(),
@@ -68,6 +87,8 @@ public record CommentResponse(
             c.getUpdatedAt(),
             toAuthorId(c),
             toAuthorNickname(c),
+            toReplyTargetId(c),
+            toReplyTargetNickname(c),
             new ArrayList<>()
         );
     }
@@ -75,9 +96,8 @@ public record CommentResponse(
     public static CommentResponse fromWithChildren(Comment root, List<Comment> children) {
         List<CommentResponse> childDtos = new ArrayList<>();
         for (Comment child : children) {
-            childDtos.add(CommentResponse.from(child)); // ← 자식도 동일 마스킹 규칙 적용
+            childDtos.add(CommentResponse.from(child));
         }
-
         return new CommentResponse(
             root.getId(),
             toParentId(root),
@@ -89,6 +109,8 @@ public record CommentResponse(
             root.getUpdatedAt(),
             toAuthorId(root),
             toAuthorNickname(root),
+            toReplyTargetId(root),
+            toReplyTargetNickname(root),
             childDtos
         );
     }

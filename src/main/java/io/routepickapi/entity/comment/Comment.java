@@ -33,7 +33,7 @@ import lombok.ToString;
  * - 소프트 삭제: status=DELETED 로만 전환, 실제 행은 남겨져있음
  */
 @Getter
-@ToString(exclude = {"post", "parent", "children"})
+@ToString(exclude = {"post", "parent", "children", "replyTarget"})
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity
 @Table(name = "comments")
@@ -52,6 +52,11 @@ public class Comment extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")
     private Comment parent;
+
+    @Setter
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reply_target_id")
+    private Comment replyTarget;
 
     // 자식 댓글 목록*양방향 편의용: 깊은 트리 로딩은 주의)
     @OneToMany(mappedBy = "parent")

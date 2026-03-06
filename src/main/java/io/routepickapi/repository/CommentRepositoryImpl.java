@@ -7,6 +7,7 @@ import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import io.routepickapi.entity.comment.Comment;
 import io.routepickapi.entity.comment.CommentStatus;
+import io.routepickapi.entity.comment.QComment;
 import io.routepickapi.entity.user.QUser;
 import java.util.ArrayList;
 import java.util.List;
@@ -66,9 +67,14 @@ public class CommentRepositoryImpl implements CommentRepositoryCustom {
             return List.of();
         }
 
+        QComment replyTarget = new QComment("replyTarget");
+        QUser replyTargetAuthor = new QUser("replyTargetAuthor");
+
         return queryFactory
             .selectFrom(comment)
             .leftJoin(comment.author).fetchJoin()
+            .leftJoin(comment.replyTarget, replyTarget).fetchJoin()
+            .leftJoin(replyTarget.author, replyTargetAuthor).fetchJoin()
             .where(
                 comment.parent.id.in(parentIds),
                 comment.status.in(CommentStatus.ACTIVE, CommentStatus.DELETED)

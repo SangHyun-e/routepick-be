@@ -83,6 +83,7 @@ public class CommentService {
 
         Comment parent = commentRepository.findById(parentId)
             .orElseThrow(() -> new CustomException(ErrorType.COMMENT_NOT_FOUND));
+        Comment replyTarget = parent;
 
         // 1) 부모 댓글이 같은 게시글 소속인지 검사 (cross-post 방지)
         if (!parent.getPost().getId().equals(postId)) {
@@ -94,11 +95,15 @@ public class CommentService {
             throw new CustomException(ErrorType.COMMENT_PARENT_NOT_ACTIVE);
         }
 
+        Comment replyParent = resolveRootParent(parent);
         Comment reply = Comment.builder()
             .post(post)
-            .parent(parent)
+            .parent(replyParent)
             .content(req.content())
             .build();
+        if (parent.getParent() != null) {
+            reply.setReplyTarget(replyTarget);
+        }
 
         if (currentUserId != null) {
             User author = requireActiveUser(currentUserId);
@@ -106,7 +111,7 @@ public class CommentService {
         }
 
         Long id = commentRepository.save(reply).getId();
-        notifyComment(post, reply, reply.getAuthor(), parent);
+        notifyComment(post, reply, reply.getAuthor(), replyTarget);
         log.info("Create reply: postId={}, parentId={}, commentId={}, authorId={}", postId,
             parentId, id, reply.getAuthor() != null ? reply.getAuthor().getId() : null);
         return id;
@@ -347,6 +352,14 @@ public class CommentService {
                 .ifPresent(users::add);
         }
         return users;
+    }
+
+    private Comment resolveRootParent(Comment parent) {
+        Comment current = parent;
+        while (current.getParent() != null) {
+            current = current.getParent();
+        }
+        return current;
     }
 
     private void validateNoticeComment(Post post) {
