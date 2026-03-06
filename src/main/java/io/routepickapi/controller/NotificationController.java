@@ -80,6 +80,22 @@ public class NotificationController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(summary = "읽은 알림 삭제", description = "읽은 알림을 삭제합니다.",
+        security = {@SecurityRequirement(name = "bearerAuth")})
+    @DeleteMapping("/read")
+    public ResponseEntity<Void> deleteRead(@AuthenticationPrincipal AuthUser currentUser) {
+        notificationService.deleteRead(currentUser.id());
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "알림 전체 삭제", description = "모든 알림을 삭제합니다.",
+        security = {@SecurityRequirement(name = "bearerAuth")})
+    @DeleteMapping
+    public ResponseEntity<Void> deleteAll(@AuthenticationPrincipal AuthUser currentUser) {
+        notificationService.deleteAll(currentUser.id());
+        return ResponseEntity.noContent().build();
+    }
+
     @Operation(summary = "알림 삭제", description = "알림을 삭제합니다.",
         security = {@SecurityRequirement(name = "bearerAuth")})
     @DeleteMapping("/{id}")

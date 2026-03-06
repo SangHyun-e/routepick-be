@@ -59,6 +59,14 @@ public class NotificationService {
         notificationRepository.delete(notification);
     }
 
+    public int deleteAll(Long userId) {
+        return notificationRepository.deleteByUserId(userId);
+    }
+
+    public int deleteRead(Long userId) {
+        return notificationRepository.deleteByUserIdAndReadTrue(userId);
+    }
+
     public int markAllRead(Long userId) {
         return notificationRepository.markAllRead(userId, LocalDateTime.now());
     }
