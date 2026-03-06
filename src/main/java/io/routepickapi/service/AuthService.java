@@ -30,6 +30,7 @@ public class AuthService {
     private final AccessTokenBlacklistService blacklistService;
     private final EmailVerificationService emailVerificationService;
     private final UserRejoinRestrictionService rejoinRestrictionService;
+    private final LoginRateLimitService loginRateLimitService;
 
     // 회원가입
     public SignUpResponse signUp(SignUpRequest req) {
@@ -63,27 +64,40 @@ public class AuthService {
      */
     public IssuedTokens loginIssueTokens(LoginRequest req) {
         log.debug("Login requested (email={})", req.email());
-        // 1) 사용자 확인 (PENDING 허용)
-        User user = userRepository.findByEmail(req.email())
-            .orElseThrow(() -> {
-                log.warn("Login failed: user not found (email={})", req.email());
-                return new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
-            });
+        String normalizedEmail = loginRateLimitService.normalizeEmail(req.email());
+        loginRateLimitService.ensureNotRateLimited(normalizedEmail);
 
-        validateLoginableUser(user);
+        try {
+            // 1) 사용자 확인 (PENDING 허용)
+            User user = userRepository.findByEmail(req.email())
+                .orElseThrow(() -> {
+                    log.warn("Login failed: user not found (email={})", req.email());
+                    return new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
+                });
 
-        // 2) 비밀번호 매칭
-        if (user.getPasswordHash() == null) {
-            log.warn("Login failed: password not set (email={})", req.email());
-            throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
+            validateLoginableUser(user);
+
+            // 2) 비밀번호 매칭
+            if (user.getPasswordHash() == null) {
+                log.warn("Login failed: password not set (email={})", req.email());
+                throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
+            }
+
+            if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
+                log.warn("Login failed: wrong password (email={})", req.email());
+                throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
+            }
+
+            IssuedTokens tokens = issueTokens(user);
+            loginRateLimitService.reset(normalizedEmail);
+            return tokens;
+        } catch (CustomException e) {
+            if (e.getType() == ErrorType.AUTH_INVALID_CREDENTIALS
+                && loginRateLimitService.recordFailure(normalizedEmail)) {
+                throw new CustomException(ErrorType.AUTH_LOGIN_RATE_LIMIT);
+            }
+            throw e;
         }
-
-        if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
-            log.warn("Login failed: wrong password (email={})", req.email());
-            throw new CustomException(ErrorType.AUTH_INVALID_CREDENTIALS);
-        }
-
-        return issueTokens(user);
     }
 
     public IssuedTokens issueTokensForUser(User user) {
