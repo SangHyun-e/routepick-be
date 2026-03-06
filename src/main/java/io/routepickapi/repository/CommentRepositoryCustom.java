@@ -20,7 +20,7 @@ public interface CommentRepositoryCustom {
      * - ACTIVE + DELETED (삭제된 대댓글도 마스킹 필요)
      * - 작성시간 오름차순
      */
-    List<Comment> findRepliesForPost(Long postId);
+    List<Comment> findRepliesForList(List<Long> parentIds);
 
     /**
      * 베스트 댓글(상단 노출용)

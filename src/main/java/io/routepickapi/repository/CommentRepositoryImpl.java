@@ -7,6 +7,7 @@ import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import io.routepickapi.entity.comment.Comment;
 import io.routepickapi.entity.comment.CommentStatus;
+import io.routepickapi.entity.comment.QComment;
 import io.routepickapi.entity.user.QUser;
 import java.util.ArrayList;
 import java.util.List;
@@ -61,17 +62,21 @@ public class CommentRepositoryImpl implements CommentRepositoryCustom {
      * - ACTIVE / DELETED 모두 포함
      */
     @Override
-    public List<Comment> findRepliesForPost(Long postId) {
-        if (postId == null) {
+    public List<Comment> findRepliesForList(List<Long> parentIds) {
+        if (parentIds == null || parentIds.isEmpty()) {
             return List.of();
         }
+
+        QComment replyTarget = new QComment("replyTarget");
+        QUser replyTargetAuthor = new QUser("replyTargetAuthor");
 
         return queryFactory
             .selectFrom(comment)
             .leftJoin(comment.author).fetchJoin()
+            .leftJoin(comment.replyTarget, replyTarget).fetchJoin()
+            .leftJoin(replyTarget.author, replyTargetAuthor).fetchJoin()
             .where(
-                comment.post.id.eq(postId),
-                comment.parent.isNotNull(),
+                comment.parent.id.in(parentIds),
                 comment.status.in(CommentStatus.ACTIVE, CommentStatus.DELETED)
             )
             .orderBy(comment.createdAt.asc())
