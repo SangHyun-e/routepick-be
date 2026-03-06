@@ -24,6 +24,7 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
+    private final RealtimeStreamService realtimeStreamService;
 
     @Transactional(readOnly = true)
     public Page<NotificationResponse> list(Long userId, Boolean read, Pageable pageable) {
@@ -80,6 +81,7 @@ public class NotificationService {
             reason
         );
         notificationRepository.save(notification);
+        realtimeStreamService.publishNotification(notification);
     }
 
     public void createNotificationByUserId(
