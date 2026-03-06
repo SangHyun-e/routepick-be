@@ -37,4 +37,10 @@ public interface CommentRepositoryCustom {
      * - 상태 필터 + 키워드(댓글/게시글/작성자) 검색
      */
     Page<Comment> findForAdmin(List<CommentStatus> statuses, String keyword, Pageable pageable);
+
+    /**
+     * 루트 댓글의 위치 계산용
+     * - 최신순 기준으로 createdAt 이후 댓글 수
+     */
+    long countRootsBefore(Long postId, java.time.LocalDateTime createdAt);
 }
