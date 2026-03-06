@@ -5,6 +5,8 @@ spring:
     multipart:
       max-file-size: 15MB
       max-request-size: 450MB
+  jpa:
+    show-sql: false
 
 server:
   port: 8080
@@ -66,6 +68,6 @@ springdoc:
 logging:
   level:
     root: INFO
-    io.routepickapi: DEBUG
+    io.routepickapi: INFO
     org.springframework: INFO
     org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: ERROR

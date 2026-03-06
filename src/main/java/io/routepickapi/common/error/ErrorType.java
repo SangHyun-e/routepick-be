@@ -21,6 +21,8 @@ public enum ErrorType {
 
     /* === 인증/토큰 === */
     AUTH_INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "AUTH-401", "이메일 또는 비밀번호가 올바르지 않습니다."),
+    AUTH_LOGIN_RATE_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "AUTH-431",
+        "로그인 시도 횟수가 초과되었습니다. 잠시 후 다시 시도해주세요."),
     AUTH_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "AUTH-402", "유효하지 않은 토큰입니다."),
     AUTH_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "AUTH-403", "만료된 토큰입니다."),
     AUTH_OAUTH_FAILED(HttpStatus.UNAUTHORIZED, "AUTH-405", "OAuth 인증에 실패했습니다."),
