@@ -18,6 +18,12 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     long countByUserIdAndReadFalse(Long userId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
+    int deleteByUserId(Long userId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    int deleteByUserIdAndReadTrue(Long userId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     int deleteByCreatedAtBefore(LocalDateTime cutoff);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
