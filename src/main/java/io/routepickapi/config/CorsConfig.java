@@ -15,8 +15,12 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration cfg = new CorsConfiguration();
         cfg.setAllowCredentials(true); // 쿠키 주고받기 허용
-        // Flutter 웹 dev 서버 포트가 바뀔 수 있으니 패턴 사용
-        cfg.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*"));
+        cfg.setAllowedOrigins(List.of(
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "https://routepick.site",
+            "https://www.routepick.site"
+        ));
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(List.of("*")); // content-type, authorization 등 전체 허용
         // 브라우저가 읽을 수 있게 노출할 헤더

@@ -27,6 +27,7 @@ logs/
 .env
 .env.*
 .envrc
+!.env.example
 
 # --- Spring (개인/비밀 yml만 무시) ---
 src/main/resources/application-local.yml
