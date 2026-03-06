@@ -1,89 +1,533 @@
 package io.routepickapi.service;
 
+import io.routepickapi.common.error.CustomException;
+import io.routepickapi.common.error.ErrorType;
+import io.routepickapi.controller.PostController.LikeResponse;
+import io.routepickapi.controller.PostController.ScrapResponse;
+import io.routepickapi.dto.comment.CommentResponse;
 import io.routepickapi.dto.post.PostCreateRequest;
 import io.routepickapi.dto.post.PostListItemResponse;
 import io.routepickapi.dto.post.PostResponse;
+import io.routepickapi.dto.post.PostUpdateRequest;
+import io.routepickapi.entity.comment.Comment;
+import io.routepickapi.entity.comment.CommentStatus;
+import io.routepickapi.entity.notification.NotificationResourceType;
+import io.routepickapi.entity.notification.NotificationType;
 import io.routepickapi.entity.post.Post;
+import io.routepickapi.entity.post.PostLike;
+import io.routepickapi.entity.post.PostScrap;
 import io.routepickapi.entity.post.PostStatus;
+import io.routepickapi.entity.user.User;
+import io.routepickapi.entity.user.UserRole;
+import io.routepickapi.entity.user.UserStatus;
+import io.routepickapi.repository.CommentQueryRepository;
+import io.routepickapi.repository.CommentLikeRepository;
+import io.routepickapi.repository.CommentRepository;
+import io.routepickapi.repository.PostLikeRepository;
+import io.routepickapi.repository.PostQueryRepository;
 import io.routepickapi.repository.PostRepository;
+import io.routepickapi.repository.PostScrapRepository;
+import io.routepickapi.repository.UserRepository;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
 public class PostService {
-    private final PostRepository postRepository;
 
-    public Long create(PostCreateRequest req) {
+    private final PostRepository postRepository;
+    private final PostQueryRepository postQueryRepository; // 동적 검색용 QueryDSL 리포지토리
+    private final UserRepository userRepository;
+    private final PostLikeRepository postLikeRepository;
+    private final PostScrapRepository postScrapRepository;
+    private final CommentQueryRepository commentQueryRepository;
+    private final CommentRepository commentRepository;
+    private final CommentLikeRepository commentLikeRepository;
+    private final S3StorageService s3StorageService;
+    private final NotificationService notificationService;
+    private final RealtimeStreamService realtimeStreamService;
+
+    public PostResponse create(PostCreateRequest req, Long currentUserId) {
         Post post = new Post(req.title(), req.content());
+
+        // 좌표는 둘 중 하나라도 있으면 setCoordinates
         if (req.latitude() != null || req.longitude() != null) {
             post.setCoordinates(req.latitude(), req.longitude());
         }
 
+        // region: null/blank 면 저장하지 않음 (=null 유지)
         if (req.region() != null && !req.region().isBlank()) {
             post.setRegion(req.region());
         }
+
         post.setTags(req.tags());
 
-        Long id = postRepository.save(post).getId();
-        log.info("Create Post: id={}, title='{}', region='{}'", id, post.getTitle(), post.getRegion());
-        return id;
+        // 작성자 지정 (인증 필요)
+        User author = requireActiveUser(currentUserId);
+        post.setAuthor(author);
+
+        if (Boolean.TRUE.equals(req.isNotice())) {
+            if (author.getRole() != UserRole.ADMIN) {
+                throw new CustomException(ErrorType.COMMON_FORBIDDEN, "공지사항 등록 권한이 없습니다.");
+            }
+            post.markNotice(true);
+        }
+
+        Post saved = postRepository.save(post);
+        log.info("Create Post: id={}, title='{}', region='{}', authorId={}",
+            saved.getId(), saved.getTitle(), saved.getRegion(), author.getId());
+
+        if (saved.isNotice()) {
+            notifyNoticePublished(saved);
+        }
+
+        realtimeStreamService.publishNewPost(saved);
+
+        // 생성 직후에는 좋아요 false
+        return PostResponse.from(saved, false, false);
     }
 
     @Transactional(readOnly = true)
-    public Page<PostListItemResponse> list(String region, Pageable pageable) {
+    public Page<PostListItemResponse> list(String region, Pageable pageable, Long currentUserId) {
+        Page<Post> posts;
         if (region == null || region.isBlank()) {
-            return postRepository
-                .findByStatusOrderByCreatedAtDesc(PostStatus.ACTIVE, pageable)
-                .map(PostListItemResponse::from);
+            posts = postQueryRepository.searchByRegionAndKeyword(null, null, pageable);
+        } else {
+            posts = postRepository
+                .findByRegionAndStatusOrderByNoticePinnedDescNoticeDescCreatedAtDesc(
+                    region,
+                    PostStatus.ACTIVE,
+                    pageable
+                );
         }
-        return postRepository
-            .findByRegionAndStatusOrderByCreatedAtDesc(region, PostStatus.ACTIVE, pageable)
-            .map(PostListItemResponse::from);
+
+        // 현재 페이지의 postIds
+        List<Long> postIds = posts.getContent().stream()
+            .map(Post::getId)
+            .toList();
+
+        // 댓글 수 집계 (ACTIVE만 카운트)
+        Map<Long, Integer> commentCountMap =
+            commentQueryRepository.countByPostIds(postIds, CommentStatus.ACTIVE);
+
+        // 비로그인 사용자
+        if (currentUserId == null) {
+            return posts.map(p -> {
+                int commentCount = commentCountMap.getOrDefault(p.getId(), 0);
+                return PostListItemResponse.from(p, commentCount);
+            });
+        }
+
+        // 로그인 사용자 - 좋아요/스크랩 상태 일괄 조회 (N+1 방지)
+        Set<Long> likedPostIds = postLikeRepository.findLikedPostIdsByUserIdAndPostIds(postIds,
+            currentUserId);
+        Set<Long> scrappedPostIds = postScrapRepository.findScrappedPostIdsByUserIdAndPostIds(
+            postIds, currentUserId);
+
+        return posts.map(p -> {
+            boolean liked = likedPostIds.contains(p.getId());
+            boolean scrapped = scrappedPostIds.contains(p.getId());
+            int commentCount = commentCountMap.getOrDefault(p.getId(), 0);
+            return PostListItemResponse.from(p, liked, scrapped, commentCount);
+        });
     }
 
-    public PostResponse getDetail(Long id, boolean increaseView) {
+    @Transactional(readOnly = true)
+    public Page<PostListItemResponse> listForAdmin(
+        PostStatus status,
+        String region,
+        String keyword,
+        Pageable pageable
+    ) {
+        Page<Post> posts = postQueryRepository.searchByStatusRegionAndKeyword(status, region,
+            keyword, pageable);
+
+        List<Long> postIds = posts.getContent().stream()
+            .map(Post::getId)
+            .toList();
+
+        Map<Long, Integer> commentCountMap =
+            commentQueryRepository.countByPostIds(postIds, CommentStatus.ACTIVE);
+
+        return posts.map(p -> {
+            int commentCount = commentCountMap.getOrDefault(p.getId(), 0);
+            return PostListItemResponse.from(p, commentCount);
+        });
+    }
+
+    public PostResponse getDetail(Long id, boolean increaseView, Long currentUserId,
+        UserRole currentUserRole) {
+        // 1) 존재/상태 확인 + 태그 fetch join
         Post post = postRepository.findWithTagsById(id)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,  "post not found"));
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+
+        if (post.getStatus() == PostStatus.DELETED) {
+            throw new CustomException(ErrorType.POST_NOT_FOUND);
+        }
+
+        if (post.getStatus() == PostStatus.HIDDEN) {
+            boolean isOwner = currentUserId != null && post.getAuthor() != null
+                && post.getAuthor().getId().equals(currentUserId);
+            boolean isAdmin = currentUserRole == UserRole.ADMIN;
+            if (!isOwner && !isAdmin) {
+                throw new CustomException(ErrorType.POST_NOT_FOUND);
+            }
+        }
+
+        // 2) 조회수 증가를 DB에서 원자적으로 처리
+        if (increaseView) {
+            PostStatus viewStatus = post.getStatus() == PostStatus.HIDDEN
+                ? PostStatus.HIDDEN
+                : PostStatus.ACTIVE;
+            int updated = postRepository.incrementViewCount(id, viewStatus);
+            if (updated == 0) {
+                // ACTIVE 가 아닌 상태로 바뀌었을 가능성 방어
+                throw new CustomException(ErrorType.POST_NOT_FOUND);
+            }
+            // 현재 영속성 컨텍스트의 post 는 아직 예전 viewCount 이므로 화면 일관성을 위해 메모리도 +1
+            post.increaseView();
+            log.debug("Increase View (atomic): id={}, newViewCount={}", id, post.getViewCount());
+        }
+        boolean isLiked =
+            (currentUserId != null) && postLikeRepository.existsByPostIdAndUserId(post.getId(),
+                currentUserId);
+        boolean isScrapped =
+            (currentUserId != null) && postScrapRepository.existsByPostIdAndUserId(post.getId(),
+                currentUserId);
+
+        // 댓글 수: ACTIVE (루트+대댓글 포함)
+        Map<Long, Integer> commentCountMap = commentQueryRepository.countByPostIds(
+            List.of(post.getId()), CommentStatus.ACTIVE);
+        int commentCount = commentCountMap.getOrDefault(post.getId(), 0);
+
+        // 베스트 댓글: ACTIVE, 좋아요 2개이상, 상위 3개
+        List<Comment> best = commentRepository.findBestComments(post.getId(), 2, 3);
+        List<CommentResponse> bestDtos = best.stream()
+            .map(CommentResponse::from)
+            .toList();
+        log.info("[DETAIL] postId={}, commentCount={}, bestCount={}", post.getId(), commentCount,
+            bestDtos.size());
+        return PostResponse.from(post, isLiked, isScrapped, commentCount, bestDtos);
+    }
+
+    @Transactional(readOnly = true)
+    public PostStatus findStatus(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        return post.getStatus();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<PostListItemResponse> search(String region, String keyword, Pageable pageable,
+        Long currentUserId) {
+        Page<Post> page = postQueryRepository.searchByRegionAndKeyword(region, keyword, pageable);
+
+        List<Long> postIds = page.getContent().stream()
+            .map(Post::getId)
+            .toList();
+
+        Map<Long, Integer> commentCountMap =
+            commentQueryRepository.countByPostIds(postIds, CommentStatus.ACTIVE);
+
+        if (currentUserId == null) {
+            return page.map(
+                p -> PostListItemResponse.from(p, commentCountMap.getOrDefault(p.getId(), 0)));
+        }
+
+        Set<Long> likedPostIds = postLikeRepository.findLikedPostIdsByUserIdAndPostIds(postIds,
+            currentUserId);
+        Set<Long> scrappedPostIds = postScrapRepository.findScrappedPostIdsByUserIdAndPostIds(
+            postIds, currentUserId);
+
+        return page.map(p -> PostListItemResponse.from(
+            p,
+            likedPostIds.contains(p.getId()),
+            scrappedPostIds.contains(p.getId()),
+            commentCountMap.getOrDefault(p.getId(), 0)
+        ));
+    }
+
+    @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
+    public PostResponse update(Long id, PostUpdateRequest req, Long currentUserId) {
+        requireActiveUser(currentUserId);
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+
+        if (post.getStatus() == PostStatus.DELETED) {
+            throw new CustomException(ErrorType.POST_NOT_FOUND);
+        }
+
+        if (req.title() != null) {
+            post.changeTitle(req.title());
+        }
+        if (req.content() != null) {
+            post.changeContent(req.content());
+        }
+
+        // region: null이면 "삭제 의도"로 보고 null 세팅(네가 이전에 그렇게 바꿔놨던 정책 유지)
+        if (req.region() != null) {
+            post.setRegion(req.region());
+        } else {
+            post.setRegion(null);
+        }
+
+        // 좌표: 둘 다 null이면 좌표 삭제, 둘 다 있으면 설정
+        if (req.latitude() == null && req.longitude() == null) {
+            post.setCoordinates(null, null);
+        } else if (req.latitude() != null && req.longitude() != null) {
+            post.setCoordinates(req.latitude(), req.longitude());
+        }
+
+        // tags: null이면 전체 삭제(빈 배열), 값 있으면 setTags
+        if (req.tags() != null) {
+            post.setTags(req.tags());
+        } else {
+            post.setTags(new ArrayList<>());
+        }
+
+        boolean isLiked =
+            (currentUserId != null) && postLikeRepository.existsByPostIdAndUserId(post.getId(),
+                currentUserId);
+        boolean isScrapped =
+            (currentUserId != null) && postScrapRepository.existsByPostIdAndUserId(post.getId(),
+                currentUserId);
+        return PostResponse.from(post, isLiked, isScrapped);
+    }
+
+    @PreAuthorize("isAuthenticated()")
+    public LikeResponse toggleLike(Long postId, Long userId) {
+
+        log.info("[LIKE] toggle start - postId={}, userId={}", postId, userId);
+
+        // post 상태 체크(삭제/숨김 정책은 니 룰에 맞춰 조정 가능)
+        Post post = postRepository.findById(postId)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
 
         if (post.getStatus() != PostStatus.ACTIVE) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available");
+            throw new CustomException(ErrorType.POST_NOT_FOUND);
         }
 
-        if (increaseView) {
-            post.increaseView();
-            log.debug("Increase View: id={}, newViewCount={}", id, post.getViewCount());
+        if (post.isNotice()) {
+            throw new CustomException(ErrorType.POST_NOTICE_LIKE_NOT_ALLOWED);
         }
-        return PostResponse.from(post);
+
+        // user 존재/상태 체크
+        User user = requireActiveUser(userId);
+
+        Optional<PostLike> existingLike = postLikeRepository.findByPostIdAndUserId(postId, userId);
+
+        if (existingLike.isPresent()) {
+            // 좋아요 취소
+            postLikeRepository.delete(existingLike.get());
+            postRepository.decrementLikeCount(postId, PostStatus.ACTIVE);
+
+            int likeCount = postRepository.findLikeCountById(postId)
+                .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+
+            log.info(
+                "[LIKE] removed - postId={}, userId={}, likeCount={}",
+                postId, userId, likeCount
+            );
+
+            return new LikeResponse(likeCount);
+        }
+
+        // 좋아요 추가
+        PostLike newLike = new PostLike(post, user);
+        postLikeRepository.save(newLike);
+        postRepository.incrementLikeCount(postId, PostStatus.ACTIVE);
+
+        int likeCount = postRepository.findLikeCountById(postId)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+
+        log.info(
+            "[LIKE] added - postId={}, userId={}, likeCount={}",
+            postId, userId, likeCount
+        );
+
+        notifyPostLike(post, user);
+
+        return new LikeResponse(likeCount);
     }
 
-    public int like(Long id) {
-        Post post = postRepository.findByIdAndStatus(id, PostStatus.ACTIVE)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not available"));
-        post.increaseLike();
-        log.debug("Increase Like: id={}, newLikeCount={}", id, post.getLikeCount());
-        return post.getLikeCount();
+    @PreAuthorize("isAuthenticated()")
+    public ScrapResponse toggleScrap(Long postId, Long userId) {
+        log.info("[SCRAP] toggle start - postId={}, userId={}", postId, userId);
+
+        Post post = postRepository.findById(postId)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+
+        if (post.getStatus() != PostStatus.ACTIVE) {
+            throw new CustomException(ErrorType.POST_NOT_FOUND);
+        }
+
+        User user = requireActiveUser(userId);
+
+        Optional<PostScrap> existingScrap = postScrapRepository.findByPostIdAndUserId(postId,
+            userId);
+
+        if (existingScrap.isPresent()) {
+            postScrapRepository.delete(existingScrap.get());
+            log.info("[SCRAP] removed - postId={}, userId={}", postId, userId);
+            return new ScrapResponse(false);
+        }
+
+        postScrapRepository.save(new PostScrap(post, user));
+        log.info("[SCRAP] added - postId={}, userId={}", postId, userId);
+        notifyPostScrap(post, user);
+        return new ScrapResponse(true);
     }
 
+    @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
     public void softDelete(Long id) {
         Post post = postRepository.findById(id)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not found"));
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        s3StorageService.deleteImagesFromContent(post.getContent());
         post.softDelete();
-        log.info("Soft Delete: id={}", id);
     }
 
+    @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
+    public void hide(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        post.hide();
+    }
+
+    @PreAuthorize("@authz.isPostOwner(#id) or hasRole('ADMIN')")
     public void activate(Long id) {
         Post post = postRepository.findById(id)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "post not found"));
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
         post.activated();
-        log.info("Activate: id={}", id);
+    }
+
+    public void hideByAdmin(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        post.hide();
+    }
+
+    public void activateByAdmin(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        post.activated();
+    }
+
+    public void toggleNoticeByAdmin(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        post.toggleNotice();
+    }
+
+    public void toggleNoticePinnedByAdmin(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        if (!post.isNotice()) {
+            throw new CustomException(ErrorType.COMMON_INVALID_INPUT,
+                "공지 게시글만 고정할 수 있습니다.");
+        }
+        post.toggleNoticePinned();
+    }
+
+    public void hardDeleteByAdmin(Long id) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        s3StorageService.deleteImagesFromContent(post.getContent());
+        commentLikeRepository.deleteByCommentPostId(post.getId());
+        commentRepository.deleteByPostId(post.getId());
+        postRepository.delete(post);
+    }
+
+    public void updateNoticeByAdmin(Long id, boolean notice) {
+        Post post = postRepository.findById(id)
+            .orElseThrow(() -> new CustomException(ErrorType.POST_NOT_FOUND));
+        if (post.getStatus() == PostStatus.DELETED) {
+            throw new CustomException(ErrorType.POST_NOT_FOUND);
+        }
+        boolean wasNotice = post.isNotice();
+        post.markNotice(notice);
+        if (!wasNotice && notice) {
+            notifyNoticePublished(post);
+        }
+    }
+
+    private User requireActiveUser(Long userId) {
+        if (userId == null) {
+            throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
+        }
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new CustomException(ErrorType.COMMON_UNAUTHORIZED));
+
+        if (user.getStatus() == UserStatus.PENDING) {
+            throw new CustomException(ErrorType.USER_EMAIL_NOT_VERIFIED);
+        }
+        if (user.getStatus() == UserStatus.BLOCKED) {
+            throw new CustomException(ErrorType.USER_BLOCKED);
+        }
+        if (user.getStatus() == UserStatus.DELETED) {
+            throw new CustomException(ErrorType.USER_NOT_FOUND);
+        }
+        return user;
+    }
+
+    private void notifyPostLike(Post post, User actor) {
+        User postAuthor = post.getAuthor();
+        if (postAuthor == null) {
+            return;
+        }
+        notificationService.createNotification(
+            postAuthor,
+            NotificationType.POST_LIKE,
+            "내 글에 좋아요가 추가됐어요",
+            String.format("'%s' 글에 좋아요가 눌렸어요.", post.getTitle()),
+            NotificationResourceType.POST,
+            post.getId(),
+            actor.getId(),
+            actor.getNickname(),
+            null
+        );
+    }
+
+    private void notifyPostScrap(Post post, User actor) {
+        User postAuthor = post.getAuthor();
+        if (postAuthor == null) {
+            return;
+        }
+        notificationService.createNotification(
+            postAuthor,
+            NotificationType.POST_SCRAP,
+            "내 글이 스크랩되었어요",
+            String.format("'%s' 글이 스크랩되었어요.", post.getTitle()),
+            NotificationResourceType.POST,
+            post.getId(),
+            actor.getId(),
+            actor.getNickname(),
+            null
+        );
+    }
+
+    private void notifyNoticePublished(Post post) {
+        List<User> recipients = userRepository.findAllByStatus(UserStatus.ACTIVE);
+        String title = "새 공지사항이 등록됐어요";
+        String message = String.format("'%s' 공지사항을 확인하세요.", post.getTitle());
+        notificationService.createBulkNotifications(
+            recipients,
+            NotificationType.NOTICE_PUBLISHED,
+            title,
+            message,
+            NotificationResourceType.NOTICE,
+            post.getId()
+        );
     }
 }

@@ -1,6 +1,7 @@
 package io.routepickapi.entity.post;
 
 import io.routepickapi.common.model.BaseEntity;
+import io.routepickapi.entity.user.User;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -13,9 +14,11 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.util.ArrayList;
 import java.util.List;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -23,16 +26,19 @@ import lombok.Setter;
 
 @Entity
 @Table(
-    name="posts",
+    name = "posts",
     indexes = {
         @Index(name = "idx_posts_created_at", columnList = "created_at"),
         @Index(name = "idx_posts_region_created_at", columnList = "region, created_at"),
-        @Index(name = "idx_posts_lat_lon", columnList = "latitude, longitude")
+        @Index(name = "idx_posts_lat_lon", columnList = "latitude, longitude"),
+        @Index(name = "idx_posts_notice_pinned_notice_created",
+            columnList = "notice_pinned, is_notice, created_at")
     }
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Post extends BaseEntity {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -56,6 +62,14 @@ public class Post extends BaseEntity {
     @Column(nullable = false, length = 16)
     private PostStatus status = PostStatus.ACTIVE;
 
+    @Column(name = "is_notice", nullable = false)
+    private boolean notice = false;
+
+    @Column(name = "notice_pinned", nullable = false)
+    private boolean noticePinned = false;
+
+    @Column(name = "notice_pinned_at")
+    private LocalDateTime noticePinnedAt;
     // 좋아요 수 카운터
     @Column(nullable = false)
     private int likeCount = 0;
@@ -69,9 +83,19 @@ public class Post extends BaseEntity {
     @Column(name = "tag", length = 40)
     private List<String> tags = new ArrayList<>();
 
+    // 글 작성자
+    @Setter
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "user_id")
+    private User author;
+
     public Post(String title, String content) {
-        if (title == null || title.isBlank()) throw new IllegalArgumentException("title required");
-        if (content == null || content.isBlank()) throw new IllegalArgumentException("content required");
+        if (title == null || title.isBlank()) {
+            throw new IllegalArgumentException("title required");
+        }
+        if (content == null || content.isBlank()) {
+            throw new IllegalArgumentException("content required");
+        }
         this.title = title;
         this.content = content;
     }
@@ -83,16 +107,81 @@ public class Post extends BaseEntity {
 
     public void setTags(List<String> tags) {
         this.tags.clear();
-        if (tags == null) return;
+        if (tags == null) {
+            return;
+        }
         for (String t : tags) {
-            if (t != null && !t.isBlank() && t.length() <= 40) this.tags.add(t);
+            if (t != null && !t.isBlank() && t.length() <= 40) {
+                this.tags.add(t);
+            }
         }
     }
 
-    public void hide() { this.status = PostStatus.HIDDEN; }
-    public void softDelete() { this.status = PostStatus.DELETED; }
-    public void activated() { this.status = PostStatus.ACTIVE; }
+    public void changeTitle(String title) {
+        if (title == null || title.isBlank() || title.length() > 120) {
+            throw new IllegalArgumentException("invalid title");
+        }
+        this.title = title;
+    }
 
-    public void increaseView() { this.viewCount++; }
-    public void increaseLike() { this.likeCount++; }
+    public void changeContent(String content) {
+        if (content == null || content.isBlank() || content.length() > 4000) {
+            throw new IllegalArgumentException("invalid content");
+        }
+        this.content = content;
+    }
+
+    public void hide() {
+        this.status = PostStatus.HIDDEN;
+    }
+
+    public void markNotice(boolean notice) {
+        this.notice = notice;
+        if (!notice) {
+            clearNoticePinned();
+        }
+    }
+
+    public void softDelete() {
+        this.status = PostStatus.DELETED;
+    }
+
+    public void activated() {
+        this.status = PostStatus.ACTIVE;
+    }
+
+    public void toggleNotice() {
+        this.notice = !this.notice;
+        if (!this.notice) {
+            clearNoticePinned();
+        }
+    }
+
+    public void toggleNoticePinned() {
+        if (this.noticePinned) {
+            clearNoticePinned();
+            return;
+        }
+        this.noticePinned = true;
+        this.noticePinnedAt = LocalDateTime.now();
+    }
+
+    public void increaseView() {
+        this.viewCount++;
+    }
+
+    public void increaseLike() {
+        this.likeCount++;
+    }
+
+    public void decreaseLike() {
+        if (this.likeCount > 0) {
+            this.likeCount--;
+        }
+    }
+
+    private void clearNoticePinned() {
+        this.noticePinned = false;
+        this.noticePinnedAt = null;
+    }
 }

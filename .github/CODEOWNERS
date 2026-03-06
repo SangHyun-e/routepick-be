@@ -1,6 +1,4 @@
 # CODEOWNERS
-# 기본: 모든 파일은 아래 소유자 검토 대상
-# 👉 @YOUR_GITHUB_ID 를 실제 깃허브 ID로 교체하세요.
 *       @sanghyun-e
 
 # 디렉터리별(원하면 세분화)

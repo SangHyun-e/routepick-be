@@ -1,5 +1,73 @@
 spring:
   application:
     name: routepick-api
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 450MB
+  jpa:
+    show-sql: false
+
 server:
   port: 8080
+
+app:
+  auth:
+    email-verify:
+      ttl-seconds: 600
+      code-length: 6
+      max-tries: 5
+    password-reset:
+      ttl-seconds: 600
+      code-length: 6
+      max-tries: 5
+  admin:
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}
+    nickname: ${ADMIN_NICKNAME:}
+
+kakao:
+  rest-api-key: ${KAKAO_REST_API_KEY:}
+  oauth:
+    client-id: ${KAKAO_OAUTH_CLIENT_ID:}
+    client-secret: ${KAKAO_OAUTH_CLIENT_SECRET:}
+    redirect-uri: ${KAKAO_OAUTH_REDIRECT_URI:}
+    logout-redirect-uri: ${KAKAO_OAUTH_LOGOUT_REDIRECT_URI:}
+
+llm:
+  api-url: ${LLM_API_URL:}
+  api-key: ${LLM_API_KEY:}
+  model: ${LLM_MODEL:gpt-4o-mini}
+  curation:
+    daily-limit: ${LLM_CURATION_DAILY_LIMIT:5}
+
+weather:
+  kma:
+    service-key: ${KMA_SERVICE_KEY:}
+
+aws:
+  region: ${AWS_REGION:ap-northeast-2}
+  s3:
+    bucket: ${AWS_S3_BUCKET:}
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-ttl-seconds: 3600
+  refresh-ttl-seconds: 1209600 # 14일
+  issuer: routepick
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui
+    display-request-duration: true
+  api-docs:
+    path: /v3/api-docs
+  packages-to-scan: io.routepickapi
+  paths-to-match: /**
+
+logging:
+  level:
+    root: INFO
+    io.routepickapi: INFO
+    org.springframework: INFO
+    org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: ERROR

@@ -1,0 +1,218 @@
+package io.routepickapi.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import io.routepickapi.common.error.CustomException;
+import io.routepickapi.common.error.ErrorType;
+import io.routepickapi.entity.user.User;
+import io.routepickapi.entity.user.UserStatus;
+import io.routepickapi.entity.user.UserStatusHistory;
+import io.routepickapi.repository.UserRepository;
+import io.routepickapi.repository.UserStatusHistoryRepository;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
+
+@ExtendWith(MockitoExtension.class)
+class AdminUserServiceTest {
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private UserStatusHistoryRepository historyRepository;
+
+    @Mock
+    private RefreshTokenService refreshTokenService;
+
+    @Mock
+    private UserRejoinRestrictionService rejoinRestrictionService;
+
+    @Mock
+    private NotificationService notificationService;
+
+    private AdminUserService adminUserService;
+
+    @BeforeEach
+    void setUp() {
+        adminUserService = new AdminUserService(userRepository, historyRepository,
+            refreshTokenService, rejoinRestrictionService, notificationService);
+    }
+
+    @Test
+    void suspendedStatusDeletesRefreshTokens() {
+        User user = new User("suspended@example.com", "hash", "suspended");
+        ReflectionTestUtils.setField(user, "id", 1L);
+        user.activate();
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        adminUserService.updateStatus(1L, UserStatus.BLOCKED, "policy", 99L);
+
+        assertThat(user.getStatus()).isEqualTo(UserStatus.BLOCKED);
+        verify(refreshTokenService).deleteAllForUser(1L);
+
+        ArgumentCaptor<UserStatusHistory> captor = ArgumentCaptor.forClass(UserStatusHistory.class);
+        verify(historyRepository).save(captor.capture());
+        assertThat(captor.getValue().getFromStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(captor.getValue().getToStatus()).isEqualTo(UserStatus.BLOCKED);
+    }
+
+    @Test
+    void deletedStatusStoresHistory() {
+        User user = new User("deleted@example.com", "hash", "deleted");
+        ReflectionTestUtils.setField(user, "id", 2L);
+        user.activate();
+
+        when(userRepository.findById(2L)).thenReturn(Optional.of(user));
+
+        adminUserService.updateStatus(2L, UserStatus.DELETED, "cleanup", 100L);
+
+        assertThat(user.getStatus()).isEqualTo(UserStatus.DELETED);
+        verify(refreshTokenService).deleteAllForUser(2L);
+        verify(rejoinRestrictionService).applyRestriction(user, "deleted@example.com");
+        ArgumentCaptor<UserStatusHistory> captor = ArgumentCaptor.forClass(UserStatusHistory.class);
+        verify(historyRepository).save(captor.capture());
+        assertThat(captor.getValue().getFromStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(captor.getValue().getToStatus()).isEqualTo(UserStatus.DELETED);
+    }
+
+    @Test
+    void deletedUserCannotBeRestored() {
+        User user = new User("gone@example.com", "hash", "gone");
+        ReflectionTestUtils.setField(user, "id", 3L);
+        user.delete();
+
+        when(userRepository.findById(3L)).thenReturn(Optional.of(user));
+
+        CustomException exception = assertThrows(CustomException.class,
+            () -> adminUserService.updateStatus(3L, UserStatus.ACTIVE, null, 1L));
+
+        assertThat(exception.getType()).isEqualTo(ErrorType.USER_STATUS_CHANGE_NOT_ALLOWED);
+        verifyNoInteractions(historyRepository);
+    }
+
+    @Test
+    void pendingUserCanBeActivated() {
+        User user = new User("pending@example.com", "hash", "pending");
+        ReflectionTestUtils.setField(user, "id", 4L);
+
+        when(userRepository.findById(4L)).thenReturn(Optional.of(user));
+
+        adminUserService.updateStatus(4L, UserStatus.ACTIVE, "approve", 7L);
+
+        assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
+        ArgumentCaptor<UserStatusHistory> captor = ArgumentCaptor.forClass(UserStatusHistory.class);
+        verify(historyRepository).save(captor.capture());
+        assertThat(captor.getValue().getFromStatus()).isEqualTo(UserStatus.PENDING);
+        assertThat(captor.getValue().getToStatus()).isEqualTo(UserStatus.ACTIVE);
+        verifyNoInteractions(refreshTokenService);
+    }
+
+    @Test
+    void pendingUserCanBeDeleted() {
+        User user = new User("pending-delete@example.com", "hash", "pending-delete");
+        ReflectionTestUtils.setField(user, "id", 5L);
+
+        when(userRepository.findById(5L)).thenReturn(Optional.of(user));
+
+        adminUserService.updateStatus(5L, UserStatus.DELETED, "cleanup", 8L);
+
+        assertThat(user.getStatus()).isEqualTo(UserStatus.DELETED);
+        ArgumentCaptor<UserStatusHistory> captor = ArgumentCaptor.forClass(UserStatusHistory.class);
+        verify(historyRepository).save(captor.capture());
+        assertThat(captor.getValue().getFromStatus()).isEqualTo(UserStatus.PENDING);
+        assertThat(captor.getValue().getToStatus()).isEqualTo(UserStatus.DELETED);
+        verify(refreshTokenService).deleteAllForUser(5L);
+        verify(rejoinRestrictionService).applyRestriction(user, "pending-delete@example.com");
+    }
+
+    @Test
+    void releaseRejoinRestrictionCallsService() {
+        User user = new User("release@example.com", "hash", "release");
+        ReflectionTestUtils.setField(user, "id", 6L);
+        user.delete();
+        user.applyRejoinRestriction("hash", LocalDateTime.now().plusDays(7));
+
+        when(userRepository.findById(6L)).thenReturn(Optional.of(user));
+
+        adminUserService.releaseRejoinRestriction(6L, 77L, "release");
+
+        verify(rejoinRestrictionService).releaseRestriction(user, 77L, "release");
+    }
+
+    @Test
+    void releaseRejoinRestrictionByEmailReleasesUsers() {
+        User user = new User("release@example.com", "hash", "release");
+        ReflectionTestUtils.setField(user, "id", 7L);
+        user.delete();
+        user.applyRejoinRestriction("hash", LocalDateTime.now().plusDays(7));
+
+        when(rejoinRestrictionService.toEmailHash("release@example.com")).thenReturn("hash");
+        when(userRepository
+            .findAllByDeletedEmailHashAndStatusAndRejoinRestrictionReleasedAtIsNull("hash",
+                UserStatus.DELETED))
+            .thenReturn(List.of(user));
+
+        adminUserService.releaseRejoinRestrictionByEmail("release@example.com", 88L, "reason");
+
+        verify(rejoinRestrictionService).releaseRestriction(user, 88L, "reason");
+    }
+
+    @Test
+    void releaseRejoinRestrictionByEmailThrowsWhenMissing() {
+        when(rejoinRestrictionService.toEmailHash("missing@example.com")).thenReturn("hash");
+        when(userRepository
+            .findAllByDeletedEmailHashAndStatusAndRejoinRestrictionReleasedAtIsNull("hash",
+                UserStatus.DELETED))
+            .thenReturn(List.of());
+
+        CustomException exception = assertThrows(CustomException.class,
+            () -> adminUserService.releaseRejoinRestrictionByEmail("missing@example.com", 1L,
+                "reason"));
+
+        assertThat(exception.getType()).isEqualTo(ErrorType.USER_NOT_FOUND);
+    }
+
+    @Test
+    void lockRejoinRestrictionAppliesRestriction() {
+        User user = new User("lock@example.com", "hash", "lock");
+        ReflectionTestUtils.setField(user, "id", 8L);
+        user.delete();
+        user.applyRejoinRestriction("hash", LocalDateTime.now().minusDays(1));
+
+        when(userRepository.findById(8L)).thenReturn(Optional.of(user));
+
+        adminUserService.lockRejoinRestriction(8L, 55L);
+
+        verify(rejoinRestrictionService).applyRestrictionWithHash(user, "hash");
+    }
+
+    @Test
+    void lockRejoinRestrictionByEmailAppliesRestriction() {
+        User user = new User("lock@example.com", "hash", "lock");
+        ReflectionTestUtils.setField(user, "id", 9L);
+        user.delete();
+
+        when(rejoinRestrictionService.toEmailHash(anyString())).thenReturn("hash");
+        when(userRepository.findAllByDeletedEmailHashAndStatus(anyString(), eq(UserStatus.DELETED)))
+            .thenReturn(List.of(user));
+
+        adminUserService.lockRejoinRestrictionByEmail("lock@example.com", 66L);
+
+        verify(rejoinRestrictionService).applyRestrictionWithHash(user, "hash");
+    }
+}

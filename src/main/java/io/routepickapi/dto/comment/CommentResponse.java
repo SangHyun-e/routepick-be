@@ -1,0 +1,117 @@
+package io.routepickapi.dto.comment;
+
+import io.routepickapi.entity.comment.Comment;
+import io.routepickapi.entity.comment.CommentDeletedBy;
+import io.routepickapi.entity.comment.CommentStatus;
+import io.routepickapi.entity.user.User;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+public record CommentResponse(
+    Long id,
+    Long parentId,
+    int depth,
+    String content,
+    int likeCount,
+    CommentStatus status,
+    LocalDateTime createdAt,
+    LocalDateTime updatedAt,
+    Long authorId,
+    String authorNickname,
+    Long replyTargetId,
+    String replyTargetNickname,
+    List<CommentResponse> replies
+) {
+
+    private static boolean isDelete(Comment c) {
+        return c.getStatus() == CommentStatus.DELETED;
+    }
+
+    private static String toContent(Comment c) {
+        if (!isDelete(c)) {
+            return c.getContent();
+        }
+        if (c.getDeletedBy() == CommentDeletedBy.ADMIN) {
+            return "관리자에 의해 삭제된 댓글입니다.";
+        }
+        return "삭제된 댓글입니다.";
+    }
+
+    private static Long toAuthorId(Comment c) {
+        if (isDelete(c)) {
+            return null;
+        }
+        User a = c.getAuthor();
+        return (a != null) ? a.getId() : null;
+    }
+
+    private static String toAuthorNickname(Comment c) {
+        if (isDelete(c)) {
+            return "알 수 없음";
+        }
+        User a = c.getAuthor();
+        return (a != null) ? a.getNickname() : "익명";
+    }
+
+    private static Long toParentId(Comment c) {
+        return (c.getParent() == null) ? null : c.getParent().getId();
+    }
+
+    private static Long toReplyTargetId(Comment c) {
+        Comment target = c.getReplyTarget();
+        return target != null ? target.getId() : null;
+    }
+
+    private static String toReplyTargetNickname(Comment c) {
+        Comment target = c.getReplyTarget();
+        if (target == null) {
+            return null;
+        }
+        if (target.getStatus() == CommentStatus.DELETED) {
+            return "알 수 없음";
+        }
+        User author = target.getAuthor();
+        return author != null ? author.getNickname() : "익명";
+    }
+
+    public static CommentResponse from(Comment c) {
+        return new CommentResponse(
+            c.getId(),
+            toParentId(c),
+            c.getDepth(),
+            toContent(c),
+            c.getLikeCount(),
+            c.getStatus(),
+            c.getCreatedAt(),
+            c.getUpdatedAt(),
+            toAuthorId(c),
+            toAuthorNickname(c),
+            toReplyTargetId(c),
+            toReplyTargetNickname(c),
+            new ArrayList<>()
+        );
+    }
+
+    public static CommentResponse fromWithChildren(Comment root, List<Comment> children) {
+        List<CommentResponse> childDtos = new ArrayList<>();
+        for (Comment child : children) {
+            childDtos.add(CommentResponse.from(child));
+        }
+        return new CommentResponse(
+            root.getId(),
+            toParentId(root),
+            root.getDepth(),
+            toContent(root),
+            root.getLikeCount(),
+            root.getStatus(),
+            root.getCreatedAt(),
+            root.getUpdatedAt(),
+            toAuthorId(root),
+            toAuthorNickname(root),
+            toReplyTargetId(root),
+            toReplyTargetNickname(root),
+            childDtos
+        );
+    }
+}
