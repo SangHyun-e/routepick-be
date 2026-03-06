@@ -83,7 +83,6 @@ public class CommentService {
 
         Comment parent = commentRepository.findById(parentId)
             .orElseThrow(() -> new CustomException(ErrorType.COMMENT_NOT_FOUND));
-        Comment replyTarget = parent;
 
         // 1) 부모 댓글이 같은 게시글 소속인지 검사 (cross-post 방지)
         if (!parent.getPost().getId().equals(postId)) {
@@ -95,10 +94,9 @@ public class CommentService {
             throw new CustomException(ErrorType.COMMENT_PARENT_NOT_ACTIVE);
         }
 
-        Comment replyParent = resolveRootParent(parent);
         Comment reply = Comment.builder()
             .post(post)
-            .parent(replyParent)
+            .parent(parent)
             .content(req.content())
             .build();
 
@@ -108,7 +106,7 @@ public class CommentService {
         }
 
         Long id = commentRepository.save(reply).getId();
-        notifyComment(post, reply, reply.getAuthor(), replyTarget);
+        notifyComment(post, reply, reply.getAuthor(), parent);
         log.info("Create reply: postId={}, parentId={}, commentId={}, authorId={}", postId,
             parentId, id, reply.getAuthor() != null ? reply.getAuthor().getId() : null);
         return id;
@@ -119,27 +117,15 @@ public class CommentService {
         // 1) 루트 페이지 (QueryDSL 교체)
         Page<Comment> roots = commentRepository.findRootsForList(postId, pageable);
 
-        // 2) 부모댓글 ID 수집
-        List<Long> parentIds = roots.getContent().stream()
-            .map(Comment::getId)
-            .toList();
+        // 2) 대댓글 전체 조회(작성시간 오름차순, QueryDSL 교체)
+        List<Comment> replies = commentRepository.findRepliesForPost(postId);
 
-        // 3) 대댓글 일괄 조회(작성시간 오름차순, QueryDSL 교체)
-        List<Comment> replies = parentIds.isEmpty()
-            ? List.of()
-            : commentRepository.findRepliesForList(parentIds);
-
-        // 4) parentId -> children 맵핑
+        // 3) parentId -> children 맵핑
         Map<Long, List<Comment>> childrenMap = replies.stream()
             .collect(Collectors.groupingBy(c -> c.getParent().getId()));
 
-        // 5) DTO 변환 (root + children)
-        return roots.map(root ->
-            CommentResponse.fromWithChildren(
-                root,
-                childrenMap.getOrDefault(root.getId(), List.of())
-            )
-        );
+        // 4) DTO 변환 (root + children)
+        return roots.map(root -> buildCommentResponse(root, childrenMap));
     }
 
     @Transactional
@@ -351,12 +337,13 @@ public class CommentService {
         return users;
     }
 
-    private Comment resolveRootParent(Comment parent) {
-        Comment current = parent;
-        while (current.getParent() != null) {
-            current = current.getParent();
-        }
-        return current;
+    private CommentResponse buildCommentResponse(Comment comment,
+        Map<Long, List<Comment>> childrenMap) {
+        List<CommentResponse> children = childrenMap.getOrDefault(comment.getId(), List.of())
+            .stream()
+            .map(child -> buildCommentResponse(child, childrenMap))
+            .toList();
+        return CommentResponse.fromWithChildren(comment, children);
     }
 
     private void validateNoticeComment(Post post) {

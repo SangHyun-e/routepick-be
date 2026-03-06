@@ -72,12 +72,10 @@ public record CommentResponse(
         );
     }
 
-    public static CommentResponse fromWithChildren(Comment root, List<Comment> children) {
-        List<CommentResponse> childDtos = new ArrayList<>();
-        for (Comment child : children) {
-            childDtos.add(CommentResponse.from(child)); // ← 자식도 동일 마스킹 규칙 적용
-        }
-
+    public static CommentResponse fromWithChildren(
+        Comment root,
+        List<CommentResponse> children
+    ) {
         return new CommentResponse(
             root.getId(),
             toParentId(root),
@@ -89,7 +87,7 @@ public record CommentResponse(
             root.getUpdatedAt(),
             toAuthorId(root),
             toAuthorNickname(root),
-            childDtos
+            children != null ? children : new ArrayList<>()
         );
     }
 }

@@ -61,8 +61,8 @@ public class CommentRepositoryImpl implements CommentRepositoryCustom {
      * - ACTIVE / DELETED 모두 포함
      */
     @Override
-    public List<Comment> findRepliesForList(List<Long> parentIds) {
-        if (parentIds == null || parentIds.isEmpty()) {
+    public List<Comment> findRepliesForPost(Long postId) {
+        if (postId == null) {
             return List.of();
         }
 
@@ -70,7 +70,8 @@ public class CommentRepositoryImpl implements CommentRepositoryCustom {
             .selectFrom(comment)
             .leftJoin(comment.author).fetchJoin()
             .where(
-                comment.parent.id.in(parentIds),
+                comment.post.id.eq(postId),
+                comment.parent.isNotNull(),
                 comment.status.in(CommentStatus.ACTIVE, CommentStatus.DELETED)
             )
             .orderBy(comment.createdAt.asc())
