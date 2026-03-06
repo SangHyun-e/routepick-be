@@ -7,6 +7,7 @@ import io.routepickapi.entity.user.User;
 import io.routepickapi.entity.user.UserAuthProvider;
 import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.repository.UserRepository;
+import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -86,11 +87,17 @@ public class UserService {
             throw new CustomException(ErrorType.USER_NOT_FOUND);
         }
 
-        if (!user.getNickname().equals(nickname) && userRepository.existsByNickname(nickname)) {
-            throw new CustomException(ErrorType.USER_NICKNAME_EXISTS);
+        if (!user.getNickname().equals(nickname)) {
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime lastUpdatedAt = user.getNicknameUpdatedAt();
+            if (lastUpdatedAt != null && lastUpdatedAt.plusDays(7).isAfter(now)) {
+                throw new CustomException(ErrorType.USER_NICKNAME_CHANGE_LIMIT);
+            }
+            if (userRepository.existsByNickname(nickname)) {
+                throw new CustomException(ErrorType.USER_NICKNAME_EXISTS);
+            }
+            user.updateNickname(nickname, now);
         }
-
-        user.setNickname(nickname);
         user.markProfileComplete();
 
         return MeResponse.from(user);

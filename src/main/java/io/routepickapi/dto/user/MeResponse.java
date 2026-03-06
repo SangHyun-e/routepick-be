@@ -19,7 +19,8 @@ public record MeResponse(
     UserAuthProvider authProvider,
     boolean profileComplete,
     LocalDateTime createdAt,
-    LocalDateTime updatedAt
+    LocalDateTime updatedAt,
+    LocalDateTime nicknameUpdatedAt
 ) {
 
     // 엔티티 -> DTO 변환 (static factory method)
@@ -33,7 +34,8 @@ public record MeResponse(
             u.getAuthProvider(),
             u.isProfileComplete(),
             u.getCreatedAt(),
-            u.getUpdatedAt()
+            u.getUpdatedAt(),
+            u.getNicknameUpdatedAt()
         );
     }
 }

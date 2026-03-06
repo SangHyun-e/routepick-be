@@ -55,6 +55,9 @@ public class User extends BaseEntity {
     @Column(name = "profile_complete", nullable = false)
     private boolean profileComplete = true;
 
+    @Column(name = "nickname_updated_at")
+    private LocalDateTime nicknameUpdatedAt;
+
     @Column(name = "withdraw_reason", length = 255)
     private String withdrawReason;
 
@@ -107,6 +110,18 @@ public class User extends BaseEntity {
             throw new IllegalArgumentException("invalid nickname");
         }
         this.nickname = nickname;
+    }
+
+    public void updateNickname(String nickname, LocalDateTime updatedAt) {
+        setNickname(nickname);
+        setNicknameUpdatedAt(updatedAt);
+    }
+
+    public void setNicknameUpdatedAt(LocalDateTime updatedAt) {
+        if (updatedAt == null) {
+            throw new IllegalArgumentException("invalid nicknameUpdatedAt");
+        }
+        this.nicknameUpdatedAt = updatedAt;
     }
 
     public void setRole(UserRole role) {

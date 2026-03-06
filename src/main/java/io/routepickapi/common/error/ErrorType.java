@@ -47,6 +47,7 @@ public enum ErrorType {
     USER_STATUS_INACTIVE(HttpStatus.FORBIDDEN, "USER-405", "비활성 상태의 사용자입니다."),
     USER_EMAIL_EXISTS(HttpStatus.CONFLICT, "USER-409", "이미 사용 중인 이메일입니다."),
     USER_NICKNAME_EXISTS(HttpStatus.CONFLICT, "USER-410", "이미 사용 중인 닉네임입니다."),
+    USER_NICKNAME_CHANGE_LIMIT(HttpStatus.CONFLICT, "USER-416", "닉네임은 7일에 한 번만 변경할 수 있습니다."),
     USER_EMAIL_NOT_VERIFIED(HttpStatus.FORBIDDEN, "USER-412",
         "이메일 인증이 필요합니다. 마이페이지에서 인증을 완료해주세요."),
 
