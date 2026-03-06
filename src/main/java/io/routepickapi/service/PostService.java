@@ -57,6 +57,7 @@ public class PostService {
     private final CommentLikeRepository commentLikeRepository;
     private final S3StorageService s3StorageService;
     private final NotificationService notificationService;
+    private final RealtimeStreamService realtimeStreamService;
 
     public PostResponse create(PostCreateRequest req, Long currentUserId) {
         Post post = new Post(req.title(), req.content());
@@ -91,6 +92,8 @@ public class PostService {
         if (saved.isNotice()) {
             notifyNoticePublished(saved);
         }
+
+        realtimeStreamService.publishNewPost(saved);
 
         // 생성 직후에는 좋아요 false
         return PostResponse.from(saved, false, false);

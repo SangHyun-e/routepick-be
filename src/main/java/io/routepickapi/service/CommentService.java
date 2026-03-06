@@ -47,6 +47,7 @@ public class CommentService {
     private final UserRepository userRepository;
     private final CommentLikeRepository commentLikeRepository;
     private final NotificationService notificationService;
+    private final RealtimeStreamService realtimeStreamService;
 
     private static final Pattern MENTION_PATTERN = Pattern.compile("@[\\w가-힣]+");
 
@@ -69,6 +70,7 @@ public class CommentService {
 
         Long id = commentRepository.save(comment).getId();
         notifyComment(post, comment, comment.getAuthor(), null);
+        realtimeStreamService.publishNewComment(post, comment);
         log.info("Create root comment: postId={}, commentId={}, authorId={}", postId, id,
             comment.getAuthor() != null ? comment.getAuthor().getId() : null);
         return id;
@@ -112,6 +114,7 @@ public class CommentService {
 
         Long id = commentRepository.save(reply).getId();
         notifyComment(post, reply, reply.getAuthor(), replyTarget);
+        realtimeStreamService.publishNewComment(post, reply);
         log.info("Create reply: postId={}, parentId={}, commentId={}, authorId={}", postId,
             parentId, id, reply.getAuthor() != null ? reply.getAuthor().getId() : null);
         return id;
