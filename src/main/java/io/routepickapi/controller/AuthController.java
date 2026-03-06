@@ -15,17 +15,22 @@ import io.routepickapi.dto.auth.PasswordResetRequest;
 import io.routepickapi.dto.auth.SessionInfoResponse;
 import io.routepickapi.dto.auth.SignUpRequest;
 import io.routepickapi.dto.auth.SignUpResponse;
+import io.routepickapi.entity.notification.NotificationResourceType;
+import io.routepickapi.entity.notification.NotificationType;
 import io.routepickapi.security.AuthUser;
 import io.routepickapi.service.AuthService;
 import io.routepickapi.service.EmailVerificationService;
 import io.routepickapi.service.KakaoOAuthService;
+import io.routepickapi.service.NotificationService;
 import io.routepickapi.service.PasswordResetService;
 import io.routepickapi.service.SessionService;
+import io.routepickapi.security.jwt.JwtProvider;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -59,6 +64,8 @@ public class AuthController {
     private final EmailVerificationService emailVerificationService;
     private final PasswordResetService passwordResetService;
     private final KakaoOAuthService kakaoOAuthService;
+    private final NotificationService notificationService;
+    private final JwtProvider jwtProvider;
 
     // 공통 로직 통합 (refresh 쿠키 생성)
     private ResponseCookie buildRefreshCookie(String value, long maxAgeSec) {
@@ -106,10 +113,14 @@ public class AuthController {
 
     @Operation(summary = "로그인", description = "이메일/비밀번호 로그인 -> JWT 발급")
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest req) {
+    public ResponseEntity<LoginResponse> login(
+        @Valid @RequestBody LoginRequest req,
+        HttpServletRequest request
+    ) {
         log.debug("POST /auth/login - request received (email={})", req.email());
         IssuedTokens tokens = authService.loginIssueTokens(req);
         log.info("Login Success (email={})", req.email());
+        notifyLogin(tokens, request);
         return okWithRefresh(tokens);
     }
 
@@ -124,8 +135,12 @@ public class AuthController {
 
     @Operation(summary = "카카오 OAuth 로그인", description = "카카오 인가 코드로 로그인/연동 처리")
     @PostMapping("/oauth/kakao/login")
-    public ResponseEntity<LoginResponse> kakaoLogin(@Valid @RequestBody KakaoLoginRequest req) {
+    public ResponseEntity<LoginResponse> kakaoLogin(
+        @Valid @RequestBody KakaoLoginRequest req,
+        HttpServletRequest request
+    ) {
         IssuedTokens tokens = kakaoOAuthService.login(req.code());
+        notifyLogin(tokens, request);
         return okWithRefresh(tokens);
     }
 
@@ -194,6 +209,44 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.NO_CONTENT)
             .header(HttpHeaders.SET_COOKIE, clear.toString())
             .build();
+    }
+
+    private void notifyLogin(IssuedTokens tokens, HttpServletRequest request) {
+        if (tokens == null || tokens.accessToken() == null) {
+            return;
+        }
+        Long userId = jwtProvider.getUserId(tokens.accessToken());
+        String userAgent = request != null ? request.getHeader("User-Agent") : null;
+        String ipAddress = resolveClientIp(request);
+        String detail = "새로운 로그인: "
+            + (ipAddress != null ? ipAddress : "알 수 없음")
+            + (userAgent != null ? " / " + userAgent : "");
+        if (detail.length() > 255) {
+            detail = detail.substring(0, 252) + "...";
+        }
+
+        notificationService.createNotificationByUserId(
+            userId,
+            NotificationType.LOGIN_ALERT,
+            "새로운 로그인 감지",
+            detail,
+            NotificationResourceType.ACCOUNT,
+            null,
+            null,
+            null,
+            null
+        );
+    }
+
+    private String resolveClientIp(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 
     @Operation(summary = "내 세션 목록", description = "현재 계정의 활성 refresh 세션 목록을 최신순으로 반환")

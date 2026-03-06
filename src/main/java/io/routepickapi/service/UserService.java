@@ -6,6 +6,8 @@ import io.routepickapi.dto.user.MeResponse;
 import io.routepickapi.entity.user.User;
 import io.routepickapi.entity.user.UserAuthProvider;
 import io.routepickapi.entity.user.UserStatus;
+import io.routepickapi.entity.notification.NotificationResourceType;
+import io.routepickapi.entity.notification.NotificationType;
 import io.routepickapi.repository.UserRepository;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +24,7 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final UserRejoinRestrictionService rejoinRestrictionService;
     private final RefreshTokenService refreshTokenService;
+    private final NotificationService notificationService;
 
     public MeResponse getMe(Long userId) {
         User user = userRepository.findById(userId)
@@ -131,6 +134,18 @@ public class UserService {
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         refreshTokenService.deleteAllForUser(userId);
+
+        notificationService.createNotification(
+            user,
+            NotificationType.PASSWORD_CHANGED,
+            "비밀번호가 변경되었습니다",
+            "보안을 위해 비밀번호 변경이 완료되었습니다.",
+            NotificationResourceType.ACCOUNT,
+            null,
+            null,
+            null,
+            null
+        );
     }
 
 }

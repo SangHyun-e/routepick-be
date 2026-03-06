@@ -41,12 +41,15 @@ class AdminUserServiceTest {
     @Mock
     private UserRejoinRestrictionService rejoinRestrictionService;
 
+    @Mock
+    private NotificationService notificationService;
+
     private AdminUserService adminUserService;
 
     @BeforeEach
     void setUp() {
         adminUserService = new AdminUserService(userRepository, historyRepository,
-            refreshTokenService, rejoinRestrictionService);
+            refreshTokenService, rejoinRestrictionService, notificationService);
     }
 
     @Test

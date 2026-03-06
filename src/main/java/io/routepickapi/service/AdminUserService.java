@@ -8,6 +8,8 @@ import io.routepickapi.dto.user.AdminUserStatusHistoryResponse;
 import io.routepickapi.entity.user.User;
 import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.entity.user.UserStatusHistory;
+import io.routepickapi.entity.notification.NotificationResourceType;
+import io.routepickapi.entity.notification.NotificationType;
 import io.routepickapi.repository.UserRepository;
 import io.routepickapi.repository.UserStatusHistoryRepository;
 import java.time.LocalDateTime;
@@ -28,6 +30,7 @@ public class AdminUserService {
     private final UserStatusHistoryRepository historyRepository;
     private final RefreshTokenService refreshTokenService;
     private final UserRejoinRestrictionService rejoinRestrictionService;
+    private final NotificationService notificationService;
 
     @Transactional(readOnly = true)
     public Page<AdminUserListItemResponse> list(String keyword, UserStatus status,
@@ -76,12 +79,14 @@ public class AdminUserService {
             adminUserId
         ));
 
+        notifyStatusChange(user, targetStatus, reason, adminUserId);
+
         if (targetStatus == UserStatus.BLOCKED || targetStatus == UserStatus.DELETED) {
             refreshTokenService.deleteAllForUser(user.getId());
         }
     }
 
-    public void updateNickname(Long userId, String nickname, String reason) {
+    public void updateNickname(Long userId, String nickname, String reason, Long adminUserId) {
         if (nickname == null || nickname.isBlank()) {
             throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "nickname 값이 필요합니다.");
         }
@@ -107,6 +112,7 @@ public class AdminUserService {
 
         user.updateNickname(nickname, LocalDateTime.now(), reason);
         user.markProfileComplete();
+        notifyNicknameChange(user, reason, adminUserId);
     }
 
     @Transactional(readOnly = true)
@@ -237,5 +243,45 @@ public class AdminUserService {
             case PENDING -> throw new CustomException(ErrorType.COMMON_INVALID_INPUT,
                 "PENDING 상태로는 변경할 수 없습니다.");
         }
+    }
+
+    private void notifyStatusChange(User user, UserStatus targetStatus, String reason,
+        Long adminUserId) {
+        String title = "계정 상태가 변경되었습니다";
+        String message = String.format("관리자가 계정 상태를 %s로 변경했습니다.", targetStatus);
+        if (reason != null && !reason.isBlank()) {
+            message = message + " 사유: " + reason.trim();
+        }
+        notificationService.createNotification(
+            user,
+            NotificationType.USER_STATUS_CHANGED,
+            title,
+            message,
+            NotificationResourceType.ADMIN,
+            null,
+            adminUserId,
+            null,
+            reason
+        );
+    }
+
+    private void notifyNicknameChange(User user, String reason, Long adminUserId) {
+        String title = "닉네임이 변경되었습니다";
+        String message = String.format("관리자가 닉네임을 '%s'(으)로 변경했습니다.",
+            user.getNickname());
+        if (reason != null && !reason.isBlank()) {
+            message = message + " 사유: " + reason.trim();
+        }
+        notificationService.createNotification(
+            user,
+            NotificationType.ADMIN_NICKNAME_CHANGED,
+            title,
+            message,
+            NotificationResourceType.ADMIN,
+            null,
+            adminUserId,
+            null,
+            reason
+        );
     }
 }

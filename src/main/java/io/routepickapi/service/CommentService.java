@@ -10,6 +10,8 @@ import io.routepickapi.entity.comment.Comment;
 import io.routepickapi.entity.comment.CommentDeletedBy;
 import io.routepickapi.entity.comment.CommentLike;
 import io.routepickapi.entity.comment.CommentStatus;
+import io.routepickapi.entity.notification.NotificationResourceType;
+import io.routepickapi.entity.notification.NotificationType;
 import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.post.PostStatus;
 import io.routepickapi.entity.user.User;
@@ -18,8 +20,12 @@ import io.routepickapi.repository.CommentLikeRepository;
 import io.routepickapi.repository.CommentRepository;
 import io.routepickapi.repository.PostRepository;
 import io.routepickapi.repository.UserRepository;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +46,9 @@ public class CommentService {
     private final PostRepository postRepository;
     private final UserRepository userRepository;
     private final CommentLikeRepository commentLikeRepository;
+    private final NotificationService notificationService;
+
+    private static final Pattern MENTION_PATTERN = Pattern.compile("@[\\w가-힣]+");
 
     public Long createRoot(Long postId, Long currentUserId, CommentCreateRequest req) {
         Post post = postRepository.findByIdAndStatus(postId, PostStatus.ACTIVE)
@@ -59,6 +68,7 @@ public class CommentService {
         }
 
         Long id = commentRepository.save(comment).getId();
+        notifyComment(post, comment, comment.getAuthor(), null);
         log.info("Create root comment: postId={}, commentId={}, authorId={}", postId, id,
             comment.getAuthor() != null ? comment.getAuthor().getId() : null);
         return id;
@@ -96,6 +106,7 @@ public class CommentService {
         }
 
         Long id = commentRepository.save(reply).getId();
+        notifyComment(post, reply, reply.getAuthor(), parent);
         log.info("Create reply: postId={}, parentId={}, commentId={}, authorId={}", postId,
             parentId, id, reply.getAuthor() != null ? reply.getAuthor().getId() : null);
         return id;
@@ -238,6 +249,104 @@ public class CommentService {
             throw new CustomException(ErrorType.USER_NOT_FOUND);
         }
         return user;
+    }
+
+    private void notifyComment(Post post, Comment comment, User actor, Comment parent) {
+        if (post == null || comment == null || actor == null) {
+            return;
+        }
+
+        Long actorId = actor.getId();
+        String actorNickname = actor.getNickname();
+        Set<Long> notifiedUserIds = new HashSet<>();
+
+        User postAuthor = post.getAuthor();
+        if (postAuthor != null && !postAuthor.getId().equals(actorId)) {
+            String title = parent == null ? "새 댓글이 달렸어요" : "내 글에 새 댓글이 달렸어요";
+            String message = String.format("'%s' 글에 새 댓글이 등록됐어요.", post.getTitle());
+            notificationService.createNotification(
+                postAuthor,
+                NotificationType.COMMENT,
+                title,
+                message,
+                NotificationResourceType.POST,
+                post.getId(),
+                actorId,
+                actorNickname,
+                null
+            );
+            notifiedUserIds.add(postAuthor.getId());
+        }
+
+        if (parent != null) {
+            User parentAuthor = parent.getAuthor();
+            if (parentAuthor != null
+                && !parentAuthor.getId().equals(actorId)
+                && !notifiedUserIds.contains(parentAuthor.getId())) {
+                notificationService.createNotification(
+                    parentAuthor,
+                    NotificationType.REPLY,
+                    "내 댓글에 답글이 달렸어요",
+                    String.format("'%s' 글에서 내 댓글에 답글이 달렸어요.", post.getTitle()),
+                    NotificationResourceType.POST,
+                    post.getId(),
+                    actorId,
+                    actorNickname,
+                    null
+                );
+                notifiedUserIds.add(parentAuthor.getId());
+            }
+        }
+
+        Set<User> mentionUsers = resolveMentionUsers(comment.getContent());
+        for (User mentionUser : mentionUsers) {
+            if (mentionUser.getId().equals(actorId)) {
+                continue;
+            }
+            if (notifiedUserIds.contains(mentionUser.getId())) {
+                continue;
+            }
+            notificationService.createNotification(
+                mentionUser,
+                NotificationType.MENTION,
+                "댓글에서 언급되었어요",
+                String.format("'%s' 글에서 %s님이 회원님을 언급했어요.", post.getTitle(),
+                    actorNickname),
+                NotificationResourceType.POST,
+                post.getId(),
+                actorId,
+                actorNickname,
+                null
+            );
+        }
+    }
+
+    private Set<User> resolveMentionUsers(String content) {
+        if (content == null || content.isBlank()) {
+            return Set.of();
+        }
+        Set<String> nicknames = new HashSet<>();
+        Matcher matcher = MENTION_PATTERN.matcher(content);
+        while (matcher.find()) {
+            String mention = matcher.group();
+            if (mention.length() <= 1) {
+                continue;
+            }
+            String nickname = mention.substring(1).trim();
+            if (!nickname.isBlank()) {
+                nicknames.add(nickname);
+            }
+        }
+        if (nicknames.isEmpty()) {
+            return Set.of();
+        }
+        Set<User> users = new HashSet<>();
+        for (String nickname : nicknames) {
+            userRepository.findByNickname(nickname)
+                .filter(user -> user.getStatus() != UserStatus.DELETED)
+                .ifPresent(users::add);
+        }
+        return users;
     }
 
     private void validateNoticeComment(Post post) {
