@@ -21,6 +21,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -76,6 +77,17 @@ public class NotificationController {
     @PatchMapping("/read-all")
     public ResponseEntity<Void> readAll(@AuthenticationPrincipal AuthUser currentUser) {
         notificationService.markAllRead(currentUser.id());
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "알림 삭제", description = "알림을 삭제합니다.",
+        security = {@SecurityRequirement(name = "bearerAuth")})
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(
+        @AuthenticationPrincipal AuthUser currentUser,
+        @PathVariable @Min(1) Long id
+    ) {
+        notificationService.delete(currentUser.id(), id);
         return ResponseEntity.noContent().build();
     }
 }
