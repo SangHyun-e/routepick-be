@@ -4,6 +4,7 @@ import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.user.AdminUserDetailResponse;
 import io.routepickapi.dto.user.AdminUserListItemResponse;
+import io.routepickapi.dto.user.AdminUserNicknameUpdateRequest;
 import io.routepickapi.dto.user.AdminUserRejoinRestrictionLockByEmailRequest;
 import io.routepickapi.dto.user.AdminUserRejoinRestrictionReleaseByEmailRequest;
 import io.routepickapi.dto.user.AdminUserRejoinRestrictionReleaseRequest;
@@ -74,6 +75,20 @@ public class AdminUserController {
             throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
         }
         adminUserService.updateStatus(id, request.status(), request.reason(), adminUser.id());
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "관리자 사용자 닉네임 변경", description = "관리자용 사용자 닉네임 변경")
+    @PatchMapping("/{id}/nickname")
+    public ResponseEntity<Void> updateNickname(
+        @PathVariable @Min(1) Long id,
+        @Valid @RequestBody AdminUserNicknameUpdateRequest request,
+        @AuthenticationPrincipal AuthUser adminUser
+    ) {
+        if (adminUser == null) {
+            throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
+        }
+        adminUserService.updateNickname(id, request.nickname(), request.reason());
         return ResponseEntity.noContent().build();
     }
 

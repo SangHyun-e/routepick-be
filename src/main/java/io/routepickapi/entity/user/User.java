@@ -58,6 +58,9 @@ public class User extends BaseEntity {
     @Column(name = "nickname_updated_at")
     private LocalDateTime nicknameUpdatedAt;
 
+    @Column(name = "nickname_change_reason", length = 255)
+    private String nicknameChangeReason;
+
     @Column(name = "withdraw_reason", length = 255)
     private String withdrawReason;
 
@@ -112,9 +115,10 @@ public class User extends BaseEntity {
         this.nickname = nickname;
     }
 
-    public void updateNickname(String nickname, LocalDateTime updatedAt) {
+    public void updateNickname(String nickname, LocalDateTime updatedAt, String reason) {
         setNickname(nickname);
         setNicknameUpdatedAt(updatedAt);
+        setNicknameChangeReason(reason);
     }
 
     public void setNicknameUpdatedAt(LocalDateTime updatedAt) {
@@ -122,6 +126,10 @@ public class User extends BaseEntity {
             throw new IllegalArgumentException("invalid nicknameUpdatedAt");
         }
         this.nicknameUpdatedAt = updatedAt;
+    }
+
+    public void setNicknameChangeReason(String reason) {
+        this.nicknameChangeReason = normalizeReason(reason);
     }
 
     public void setRole(UserRole role) {

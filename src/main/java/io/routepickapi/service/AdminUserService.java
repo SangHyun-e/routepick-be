@@ -10,6 +10,7 @@ import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.entity.user.UserStatusHistory;
 import io.routepickapi.repository.UserRepository;
 import io.routepickapi.repository.UserStatusHistoryRepository;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
@@ -78,6 +79,34 @@ public class AdminUserService {
         if (targetStatus == UserStatus.BLOCKED || targetStatus == UserStatus.DELETED) {
             refreshTokenService.deleteAllForUser(user.getId());
         }
+    }
+
+    public void updateNickname(Long userId, String nickname, String reason) {
+        if (nickname == null || nickname.isBlank()) {
+            throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "nickname 값이 필요합니다.");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "reason 값이 필요합니다.");
+        }
+
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new CustomException(ErrorType.USER_NOT_FOUND));
+
+        if (user.getStatus() == UserStatus.DELETED) {
+            throw new CustomException(ErrorType.USER_STATUS_CHANGE_NOT_ALLOWED,
+                "삭제된 사용자의 닉네임은 변경할 수 없습니다.");
+        }
+
+        if (user.getNickname().equals(nickname)) {
+            return;
+        }
+
+        if (userRepository.existsByNickname(nickname)) {
+            throw new CustomException(ErrorType.USER_NICKNAME_EXISTS);
+        }
+
+        user.updateNickname(nickname, LocalDateTime.now(), reason);
+        user.markProfileComplete();
     }
 
     @Transactional(readOnly = true)
