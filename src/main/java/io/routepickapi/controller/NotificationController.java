@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -40,7 +41,9 @@ public class NotificationController {
         @RequestParam(required = false)
         @Parameter(description = "읽음 여부 필터", example = "false")
         Boolean read,
-        @ParameterObject @PageableDefault(size = 20) Pageable pageable
+        @ParameterObject
+        @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
+        Pageable pageable
     ) {
         log.info("GET /notifications - userId={}, read={}", currentUser.id(), read);
         return notificationService.list(currentUser.id(), read, pageable);
