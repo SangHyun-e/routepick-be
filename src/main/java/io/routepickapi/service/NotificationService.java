@@ -48,6 +48,17 @@ public class NotificationService {
         notification.markRead(LocalDateTime.now());
     }
 
+    public void delete(Long userId, Long notificationId) {
+        Notification notification = notificationRepository.findById(notificationId)
+            .orElseThrow(() -> new CustomException(ErrorType.COMMON_NOT_FOUND));
+
+        if (!notification.getUser().getId().equals(userId)) {
+            throw new CustomException(ErrorType.COMMON_FORBIDDEN);
+        }
+
+        notificationRepository.delete(notification);
+    }
+
     public int markAllRead(Long userId) {
         return notificationRepository.markAllRead(userId, LocalDateTime.now());
     }
