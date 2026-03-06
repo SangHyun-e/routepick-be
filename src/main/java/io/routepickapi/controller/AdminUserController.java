@@ -88,7 +88,7 @@ public class AdminUserController {
         if (adminUser == null) {
             throw new CustomException(ErrorType.COMMON_UNAUTHORIZED);
         }
-        adminUserService.updateNickname(id, request.nickname(), request.reason());
+        adminUserService.updateNickname(id, request.nickname(), request.reason(), adminUser.id());
         return ResponseEntity.noContent().build();
     }
 

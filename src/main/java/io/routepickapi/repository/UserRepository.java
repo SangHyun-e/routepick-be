@@ -17,6 +17,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByEmail(String email);
 
+    Optional<User> findByNickname(String nickname);
+
     boolean existsByEmail(String email);
 
     Optional<User> findByIdAndStatus(Long id, UserStatus status);
@@ -29,6 +31,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
         String deletedEmailHash,
         LocalDateTime rejoinRestrictedUntil
     );
+
+    List<User> findAllByStatus(UserStatus status);
 
     List<User> findAllByDeletedEmailHashAndStatusAndRejoinRestrictionReleasedAtIsNull(
         String deletedEmailHash,

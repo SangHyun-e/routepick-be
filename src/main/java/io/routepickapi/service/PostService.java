@@ -11,6 +11,8 @@ import io.routepickapi.dto.post.PostResponse;
 import io.routepickapi.dto.post.PostUpdateRequest;
 import io.routepickapi.entity.comment.Comment;
 import io.routepickapi.entity.comment.CommentStatus;
+import io.routepickapi.entity.notification.NotificationResourceType;
+import io.routepickapi.entity.notification.NotificationType;
 import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.post.PostLike;
 import io.routepickapi.entity.post.PostScrap;
@@ -54,6 +56,7 @@ public class PostService {
     private final CommentRepository commentRepository;
     private final CommentLikeRepository commentLikeRepository;
     private final S3StorageService s3StorageService;
+    private final NotificationService notificationService;
 
     public PostResponse create(PostCreateRequest req, Long currentUserId) {
         Post post = new Post(req.title(), req.content());
@@ -84,6 +87,10 @@ public class PostService {
         Post saved = postRepository.save(post);
         log.info("Create Post: id={}, title='{}', region='{}', authorId={}",
             saved.getId(), saved.getTitle(), saved.getRegion(), author.getId());
+
+        if (saved.isNotice()) {
+            notifyNoticePublished(saved);
+        }
 
         // 생성 직후에는 좋아요 false
         return PostResponse.from(saved, false, false);
@@ -347,6 +354,8 @@ public class PostService {
             postId, userId, likeCount
         );
 
+        notifyPostLike(post, user);
+
         return new LikeResponse(likeCount);
     }
 
@@ -374,6 +383,7 @@ public class PostService {
 
         postScrapRepository.save(new PostScrap(post, user));
         log.info("[SCRAP] added - postId={}, userId={}", postId, userId);
+        notifyPostScrap(post, user);
         return new ScrapResponse(true);
     }
 
@@ -442,7 +452,11 @@ public class PostService {
         if (post.getStatus() == PostStatus.DELETED) {
             throw new CustomException(ErrorType.POST_NOT_FOUND);
         }
+        boolean wasNotice = post.isNotice();
         post.markNotice(notice);
+        if (!wasNotice && notice) {
+            notifyNoticePublished(post);
+        }
     }
 
     private User requireActiveUser(Long userId) {
@@ -462,5 +476,55 @@ public class PostService {
             throw new CustomException(ErrorType.USER_NOT_FOUND);
         }
         return user;
+    }
+
+    private void notifyPostLike(Post post, User actor) {
+        User postAuthor = post.getAuthor();
+        if (postAuthor == null) {
+            return;
+        }
+        notificationService.createNotification(
+            postAuthor,
+            NotificationType.POST_LIKE,
+            "내 글에 좋아요가 추가됐어요",
+            String.format("'%s' 글에 좋아요가 눌렸어요.", post.getTitle()),
+            NotificationResourceType.POST,
+            post.getId(),
+            actor.getId(),
+            actor.getNickname(),
+            null
+        );
+    }
+
+    private void notifyPostScrap(Post post, User actor) {
+        User postAuthor = post.getAuthor();
+        if (postAuthor == null) {
+            return;
+        }
+        notificationService.createNotification(
+            postAuthor,
+            NotificationType.POST_SCRAP,
+            "내 글이 스크랩되었어요",
+            String.format("'%s' 글이 스크랩되었어요.", post.getTitle()),
+            NotificationResourceType.POST,
+            post.getId(),
+            actor.getId(),
+            actor.getNickname(),
+            null
+        );
+    }
+
+    private void notifyNoticePublished(Post post) {
+        List<User> recipients = userRepository.findAllByStatus(UserStatus.ACTIVE);
+        String title = "새 공지사항이 등록됐어요";
+        String message = String.format("'%s' 공지사항을 확인하세요.", post.getTitle());
+        notificationService.createBulkNotifications(
+            recipients,
+            NotificationType.NOTICE_PUBLISHED,
+            title,
+            message,
+            NotificationResourceType.NOTICE,
+            post.getId()
+        );
     }
 }
