@@ -63,6 +63,35 @@ io.routepickapi
 - `SMTP_PASSWORD`: SMTP 앱 비밀번호
 - `SMTP_FROM_EMAIL`: 발신 이메일 (기본값 `SMTP_USERNAME`)
 
+### 🚀 배포 환경 변수 (prod)
+
+```
+SPRING_PROFILES_ACTIVE=prod
+
+DB_URL=
+DB_USER=
+DB_PASSWORD=
+
+REDIS_HOST=
+REDIS_PORT=6379
+
+JWT_SECRET=
+
+KAKAO_REST_API_KEY=
+KAKAO_OAUTH_REDIRECT_URI=https://api.routepick.site/auth/kakao/callback
+
+AWS_ACCESS_KEY=
+AWS_SECRET_KEY=
+AWS_REGION=
+AWS_S3_BUCKET=
+```
+
+### 🐳 Docker Compose (prod)
+
+```
+docker compose -f ../../docker-compose.prod.yml up -d --build
+```
+
 ### S3 공개 설정
 - 업로드된 이미지는 버킷 정책을 통해 `s3:GetObject` 공개 접근을 허용해야 합니다.
 - 버킷이 `ACL 비활성(Bucket owner enforced)` 상태여도 동작하도록 ACL을 사용하지 않습니다.
