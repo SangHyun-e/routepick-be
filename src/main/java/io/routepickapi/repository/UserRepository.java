@@ -44,6 +44,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
         UserStatus status
     );
 
+    List<User> findByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
+
     @Query("""
         select u
           from User u
