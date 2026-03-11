@@ -6,9 +6,15 @@ import io.routepickapi.dto.course.CourseRecommendationRequest;
 import io.routepickapi.dto.course.CourseRecommendationResponse;
 import io.routepickapi.dto.course.CourseStopResponse;
 import io.routepickapi.dto.course.CourseTheme;
+import io.routepickapi.dto.place.KakaoPlaceSearchResponse;
+import io.routepickapi.dto.place.KakaoPlaceSearchResponse.KakaoPlaceDocument;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +26,30 @@ import org.springframework.stereotype.Service;
 public class CourseRecommendationService {
 
     private static final int DEFAULT_MAX_STOPS = 3;
+    private static final int DEFAULT_MAX_DETOUR_KM = 10;
+    private static final int MIDPOINT_COUNT = 6;
+    private static final int SEARCH_RADIUS_METERS = 4000;
+    private static final int SEARCH_PAGE = 1;
+    private static final int SEARCH_SIZE = 15;
+    private static final double EARTH_RADIUS_KM = 6371.0;
+
+    private static final List<String> BLOCKED_KEYWORDS = List.of(
+        "교회",
+        "성당",
+        "사찰",
+        "마트",
+        "편의점",
+        "주유소",
+        "정비소",
+        "세차장",
+        "병원",
+        "약국",
+        "은행",
+        "학교",
+        "우체국"
+    );
+
+    private final KakaoLocalService kakaoLocalService;
 
     private static final List<CuratedCourse> CURATED_COURSES = List.of(
         new CuratedCourse(
@@ -51,6 +81,16 @@ public class CourseRecommendationService {
                 stop("이순신공원", "경남 통영시 정량동 600", 128.4307, 34.8447, "공원")
             ),
             "남해안의 드라이브 포인트를 묶은 코스입니다."
+        ),
+        new CuratedCourse(
+            CourseTheme.SEA,
+            List.of("제주", "제주도", "서귀포", "애월", "성산"),
+            List.of(
+                stop("협재해수욕장", "제주 제주시 한림읍 한림로 329-10", 126.2395, 33.3947, "해변"),
+                stop("함덕해수욕장", "제주 제주시 조천읍 조함해안로 525", 126.6691, 33.5436, "해변"),
+                stop("성산일출봉", "제주 서귀포시 성산읍 성산리 1", 126.9400, 33.4589, "명소")
+            ),
+            "제주의 맑은 바다와 섬 풍경을 즐길 수 있는 드라이브 코스입니다."
         ),
         new CuratedCourse(
             CourseTheme.MOUNTAIN,
@@ -141,6 +181,16 @@ public class CourseRecommendationService {
                 stop("울산 대왕암공원", "울산 동구 등대로 95", 129.4451, 35.4943, "공원")
             ),
             "남해안의 해안도로와 전망 포인트를 이어주는 코스입니다."
+        ),
+        new CuratedCourse(
+            CourseTheme.COASTAL,
+            List.of("제주", "제주도", "서귀포", "애월", "성산"),
+            List.of(
+                stop("한담해안산책로", "제주 제주시 애월읍 애월리 2549", 126.3092, 33.4630, "해안"),
+                stop("용머리해안", "제주 서귀포시 안덕면 사계리 112-3", 126.3146, 33.2326, "해안"),
+                stop("섭지코지", "제주 서귀포시 성산읍 고성리", 126.9298, 33.4240, "해안")
+            ),
+            "제주 해안선을 따라 달리며 풍경을 즐길 수 있는 코스입니다."
         )
     );
 
@@ -151,20 +201,318 @@ public class CourseRecommendationService {
 
         CourseTheme theme = CourseTheme.from(request.theme());
         int maxStops = sanitizeMaxStops(request.maxStops());
+        double maxDetourKm = sanitizeMaxDetourKm(request.maxDetourKm());
 
-        CuratedCourse course = selectCourse(theme, request.origin(), request.destination());
-        List<CourseStopResponse> stops = course.stops().stream()
-            .limit(maxStops)
-            .toList();
+        List<CourseStopResponse> stops = recommendByKakao(
+            request.origin(),
+            request.destination(),
+            theme,
+            maxStops,
+            maxDetourKm
+        );
+
+        String explanation;
+        if (stops.isEmpty()) {
+            CuratedCourse curated = selectCuratedCourse(theme, request.origin(), request.destination());
+            stops = curated.stops().stream()
+                .limit(maxStops)
+                .toList();
+            explanation = buildCuratedExplanation(theme, curated, stops);
+        } else {
+            explanation = buildAutoExplanation(theme, stops, maxDetourKm);
+        }
 
         String routeSummary = buildRouteSummary(request.origin(), request.destination(), stops);
-        String explanation = buildExplanation(theme, course, stops);
 
         log.info("추천 코스 생성 완료 - theme={}, stops={}", theme.label(), stops.size());
         return new CourseRecommendationResponse(stops, routeSummary, explanation);
     }
 
-    private CuratedCourse selectCourse(CourseTheme theme, String origin, String destination) {
+    public List<CourseStopResponse> recommendCandidates(
+        String origin,
+        String destination,
+        CourseTheme theme,
+        Integer maxDetourKm,
+        int limit
+    ) {
+        if (limit <= 0) {
+            return List.of();
+        }
+
+        double detourLimit = sanitizeMaxDetourKm(maxDetourKm);
+        return recommendByKakao(origin, destination, theme, limit, detourLimit);
+    }
+
+    private List<CourseStopResponse> recommendByKakao(
+        String origin,
+        String destination,
+        CourseTheme theme,
+        int limit,
+        double maxDetourKm
+    ) {
+        GeoPoint originPoint = resolvePoint(origin);
+        GeoPoint destinationPoint = resolvePoint(destination);
+        List<Candidate> candidates = collectCandidates(originPoint, destinationPoint, theme, maxDetourKm);
+
+        return candidates.stream()
+            .limit(limit)
+            .map(this::toStopResponse)
+            .toList();
+    }
+
+    private List<Candidate> collectCandidates(
+        GeoPoint origin,
+        GeoPoint destination,
+        CourseTheme theme,
+        double maxDetourKm
+    ) {
+        List<GeoPoint> midpoints = generateMidpoints(origin, destination, MIDPOINT_COUNT);
+        Map<String, Candidate> candidates = new LinkedHashMap<>();
+
+        for (GeoPoint midpoint : midpoints) {
+            for (String keyword : theme.keywords()) {
+                KakaoPlaceSearchResponse response = kakaoLocalService.searchKeywordByLocation(
+                    keyword,
+                    midpoint.x(),
+                    midpoint.y(),
+                    SEARCH_RADIUS_METERS,
+                    SEARCH_PAGE,
+                    SEARCH_SIZE
+                );
+
+                if (response == null || response.documents() == null) {
+                    continue;
+                }
+
+                for (KakaoPlaceDocument document : response.documents()) {
+                    Candidate candidate = toCandidate(document, theme, origin, destination);
+                    if (candidate == null || candidate.detourKm() > maxDetourKm) {
+                        continue;
+                    }
+
+                    candidates.merge(
+                        candidate.key(),
+                        candidate,
+                        (existing, incoming) -> incoming.score() > existing.score() ? incoming : existing
+                    );
+                }
+            }
+        }
+
+        return candidates.values().stream()
+            .sorted(Comparator.comparingDouble(Candidate::score).reversed()
+                .thenComparingDouble(Candidate::detourKm))
+            .toList();
+    }
+
+    private GeoPoint resolvePoint(String query) {
+        KakaoPlaceSearchResponse response = kakaoLocalService.searchKeyword(query, 1, 1);
+        if (response == null || response.documents() == null || response.documents().isEmpty()) {
+            throw new CustomException(ErrorType.COMMON_NOT_FOUND, "좌표를 찾을 수 없습니다.");
+        }
+
+        KakaoPlaceDocument document = response.documents().getFirst();
+        GeoPoint point = parsePoint(document.x(), document.y());
+        if (point == null) {
+            throw new CustomException(ErrorType.COMMON_NOT_FOUND, "좌표를 찾을 수 없습니다.");
+        }
+
+        return point;
+    }
+
+    private List<GeoPoint> generateMidpoints(GeoPoint origin, GeoPoint destination, int count) {
+        List<GeoPoint> points = new ArrayList<>();
+        if (count <= 0) {
+            return points;
+        }
+
+        for (int index = 1; index <= count; index++) {
+            double ratio = index / (double) (count + 1);
+            double x = origin.x() + (destination.x() - origin.x()) * ratio;
+            double y = origin.y() + (destination.y() - origin.y()) * ratio;
+            points.add(new GeoPoint(x, y));
+        }
+
+        return points;
+    }
+
+    private Candidate toCandidate(
+        KakaoPlaceDocument document,
+        CourseTheme theme,
+        GeoPoint origin,
+        GeoPoint destination
+    ) {
+        if (document == null) {
+            return null;
+        }
+
+        String name = nullSafe(document.placeName());
+        String address = resolveAddress(document);
+        String category = nullSafe(document.categoryName());
+        String groupName = nullSafe(document.categoryGroupName());
+        String groupCode = nullSafe(document.categoryGroupCode());
+        GeoPoint point = parsePoint(document.x(), document.y());
+
+        if (name.isBlank() || address.isBlank() || point == null) {
+            return null;
+        }
+
+        if (isBlocked(name, category, groupName)) {
+            return null;
+        }
+
+        if (!isAllowedGroup(theme, groupCode) || !matchesTheme(theme, name, category, groupName)) {
+            return null;
+        }
+
+        double detourKm = calculateDetourKm(origin, destination, point);
+        double score = 1.0 - detourKm;
+
+        String key = document.id() != null && !document.id().isBlank()
+            ? document.id()
+            : name + "|" + address;
+
+        return new Candidate(key, name, address, category, point, score, detourKm);
+    }
+
+    private boolean isBlocked(String name, String category, String groupName) {
+        String combined = String.join(" ", name, category, groupName).toLowerCase(Locale.ROOT);
+        for (String keyword : BLOCKED_KEYWORDS) {
+            if (combined.contains(keyword.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isAllowedGroup(CourseTheme theme, String groupCode) {
+        if (theme == CourseTheme.CAFE) {
+            return groupCode.isBlank() || "CE7".equals(groupCode);
+        }
+        if (theme == CourseTheme.FOOD) {
+            return groupCode.isBlank() || "FD6".equals(groupCode);
+        }
+        return true;
+    }
+
+    private boolean matchesTheme(CourseTheme theme, String name, String category, String groupName) {
+        String nameLower = name.toLowerCase(Locale.ROOT);
+        String categoryLower = category.toLowerCase(Locale.ROOT);
+        String groupLower = groupName.toLowerCase(Locale.ROOT);
+
+        return theme.keywords().stream()
+            .filter(Objects::nonNull)
+            .map(keyword -> keyword.toLowerCase(Locale.ROOT))
+            .anyMatch(keyword -> nameLower.contains(keyword)
+                || categoryLower.contains(keyword)
+                || groupLower.contains(keyword));
+    }
+
+    private String resolveAddress(KakaoPlaceDocument document) {
+        if (document == null) {
+            return "";
+        }
+
+        String roadAddress = nullSafe(document.roadAddressName());
+        if (!roadAddress.isBlank()) {
+            return roadAddress;
+        }
+
+        return nullSafe(document.addressName());
+    }
+
+    private String buildRouteSummary(
+        String origin,
+        String destination,
+        List<CourseStopResponse> stops
+    ) {
+        String stopNames = stops.stream()
+            .map(CourseStopResponse::name)
+            .collect(Collectors.joining(" → "));
+
+        if (stopNames.isBlank()) {
+            return String.format("%s → %s", origin, destination);
+        }
+
+        return String.format("%s → %s → %s", origin, stopNames, destination);
+    }
+
+    private String buildAutoExplanation(
+        CourseTheme theme,
+        List<CourseStopResponse> stops,
+        double maxDetourKm
+    ) {
+        List<String> lines = new ArrayList<>();
+        lines.add(String.format("%s 테마에 맞춰 출발지와 도착지 사이의 중간 지점을 탐색했습니다.", theme.label()));
+
+        if (stops.isEmpty()) {
+            lines.add("현재 조건에서 추천할 만한 장소가 부족해 기본 경로를 우선 제안합니다.");
+            lines.add("테마를 변경하거나 우회 거리 조건을 완화하면 더 많은 후보를 확인할 수 있습니다.");
+            return String.join("\n", lines);
+        }
+
+        String stopNames = stops.stream()
+            .map(CourseStopResponse::name)
+            .collect(Collectors.joining(", "));
+
+        lines.add(String.format("추천 경유지는 %s이며 경로 이탈을 최소화했습니다.", stopNames));
+        lines.add(String.format("우회 거리는 %.1fkm 이내를 기준으로 선별했습니다.", maxDetourKm));
+        lines.add("주행 흐름과 휴식 타이밍을 고려해 자연스럽게 이어지도록 구성했습니다.");
+        return String.join("\n", lines);
+    }
+
+    private String buildCuratedExplanation(
+        CourseTheme theme,
+        CuratedCourse course,
+        List<CourseStopResponse> stops
+    ) {
+        List<String> lines = new ArrayList<>();
+        if (course.description() != null && !course.description().isBlank()) {
+            lines.add(course.description());
+        }
+
+        if (!stops.isEmpty()) {
+            String stopNames = stops.stream()
+                .map(CourseStopResponse::name)
+                .collect(Collectors.joining(", "));
+            lines.add(String.format("%s 테마에 맞춘 추천 경유지는 %s입니다.", theme.label(), stopNames));
+        }
+
+        lines.add("출발지와 도착지에 맞춰 경유지 순서는 상황에 따라 조정해보세요.");
+        return String.join("\n", lines);
+    }
+
+    private double calculateDetourKm(GeoPoint origin, GeoPoint destination, GeoPoint stop) {
+        double direct = distanceKm(origin, destination);
+        double viaStop = distanceKm(origin, stop) + distanceKm(stop, destination);
+        return Math.max(0, viaStop - direct);
+    }
+
+    private double distanceKm(GeoPoint start, GeoPoint end) {
+        double lat1 = Math.toRadians(start.y());
+        double lat2 = Math.toRadians(end.y());
+        double deltaLat = Math.toRadians(end.y() - start.y());
+        double deltaLon = Math.toRadians(end.x() - start.x());
+
+        double a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2)
+            + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return EARTH_RADIUS_KM * c;
+    }
+
+    private GeoPoint parsePoint(String x, String y) {
+        if (x == null || y == null) {
+            return null;
+        }
+
+        try {
+            return new GeoPoint(Double.parseDouble(x), Double.parseDouble(y));
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private CuratedCourse selectCuratedCourse(CourseTheme theme, String origin, String destination) {
         List<CuratedCourse> themed = CURATED_COURSES.stream()
             .filter(course -> course.theme() == theme)
             .toList();
@@ -192,41 +540,14 @@ public class CourseRecommendationService {
             .anyMatch(query::contains);
     }
 
-    private String buildRouteSummary(
-        String origin,
-        String destination,
-        List<CourseStopResponse> stops
-    ) {
-        String stopNames = stops.stream()
-            .map(CourseStopResponse::name)
-            .collect(Collectors.joining(" → "));
-
-        if (stopNames.isBlank()) {
-            return String.format("%s → %s", origin, destination);
-        }
-
-        return String.format("%s → %s → %s", origin, stopNames, destination);
-    }
-
-    private String buildExplanation(
-        CourseTheme theme,
-        CuratedCourse course,
-        List<CourseStopResponse> stops
-    ) {
-        List<String> lines = new ArrayList<>();
-        if (course.description() != null && !course.description().isBlank()) {
-            lines.add(course.description());
-        }
-
-        if (!stops.isEmpty()) {
-            String stopNames = stops.stream()
-                .map(CourseStopResponse::name)
-                .collect(Collectors.joining(", "));
-            lines.add(String.format("%s 테마에 맞춘 추천 경유지는 %s입니다.", theme.label(), stopNames));
-        }
-
-        lines.add("출발지와 도착지에 맞춰 경유지 순서는 상황에 따라 조정해보세요.");
-        return String.join("\n", lines);
+    private CourseStopResponse toStopResponse(Candidate candidate) {
+        return new CourseStopResponse(
+            candidate.name(),
+            candidate.address(),
+            candidate.point().x(),
+            candidate.point().y(),
+            candidate.category()
+        );
     }
 
     private int sanitizeMaxStops(Integer maxStops) {
@@ -234,11 +555,20 @@ public class CourseRecommendationService {
         return Math.min(DEFAULT_MAX_STOPS, Math.max(1, requested));
     }
 
+    private double sanitizeMaxDetourKm(Integer maxDetourKm) {
+        int requested = maxDetourKm == null ? DEFAULT_MAX_DETOUR_KM : maxDetourKm;
+        return Math.max(1, requested);
+    }
+
     private String normalizeQuery(String value) {
         if (value == null) {
             return "";
         }
         return value.toLowerCase(Locale.ROOT).replace(" ", "");
+    }
+
+    private String nullSafe(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private static CourseStopResponse stop(
@@ -249,6 +579,20 @@ public class CourseRecommendationService {
         String category
     ) {
         return new CourseStopResponse(name, address, x, y, category);
+    }
+
+    private record GeoPoint(double x, double y) {
+    }
+
+    private record Candidate(
+        String key,
+        String name,
+        String address,
+        String category,
+        GeoPoint point,
+        double score,
+        double detourKm
+    ) {
     }
 
     private record CuratedCourse(

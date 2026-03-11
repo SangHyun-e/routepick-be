@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "크루저 큐레이션 응답")
+@Schema(description = "AI 추천 더보기 응답")
 public record CourseCurationResponse(
     @JsonProperty("course_title")
     @Schema(description = "코스 이름")
@@ -20,7 +20,10 @@ public record CourseCurationResponse(
     DriveInfo driveInfo,
     @JsonProperty("curator_tips")
     @Schema(description = "큐레이터 팁")
-    List<String> curatorTips
+    List<String> curatorTips,
+    @JsonProperty("extra_stops")
+    @Schema(description = "추가 추천 장소")
+    List<CourseStopResponse> extraStops
 ) {
     public record RouteDetails(
         @Schema(description = "출발지") String start,

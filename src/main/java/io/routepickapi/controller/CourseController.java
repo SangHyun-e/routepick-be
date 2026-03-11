@@ -56,7 +56,7 @@ public class CourseController {
         return courseRecommendationService.recommend(request);
     }
 
-    @Operation(summary = "크루저 큐레이션", description = "추천 코스 기반으로 크루저 큐레이션을 생성합니다.",
+    @Operation(summary = "AI 추천 더보기", description = "추천 코스 기반으로 AI 추가 추천과 설명을 제공합니다.",
         security = {@SecurityRequirement(name = "bearerAuth")})
     @PostMapping("/curation")
     @PreAuthorize("isAuthenticated()")
