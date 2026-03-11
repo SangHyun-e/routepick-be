@@ -8,6 +8,7 @@ import io.routepickapi.entity.notification.Notification;
 import io.routepickapi.entity.post.Post;
 import io.routepickapi.entity.user.User;
 import io.routepickapi.repository.NotificationRepository;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -162,15 +163,28 @@ public class RealtimeStreamService {
     }
 
     private void broadcast(List<SseEmitter> emitters, String eventName, Object payload) {
+        List<SseEmitter> staleEmitters = new ArrayList<>();
         for (SseEmitter emitter : emitters) {
             try {
                 emitter.send(SseEmitter.event().name(eventName).data(payload));
             } catch (Exception ex) {
-                emitter.complete();
-                emitters.remove(emitter);
+                safeComplete(emitter);
+                staleEmitters.add(emitter);
                 log.debug("SSE emitter removed: event={}, reason={}", eventName,
                     ex.getMessage());
             }
+        }
+
+        if (!staleEmitters.isEmpty()) {
+            emitters.removeAll(staleEmitters);
+        }
+    }
+
+    private void safeComplete(SseEmitter emitter) {
+        try {
+            emitter.complete();
+        } catch (Exception ex) {
+            log.debug("SSE emitter completion ignored: {}", ex.getMessage());
         }
     }
 }
