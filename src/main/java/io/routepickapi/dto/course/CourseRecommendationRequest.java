@@ -11,7 +11,7 @@ public record CourseRecommendationRequest(
     String origin,
     @NotBlank @Schema(description = "도착지 주소")
     String destination,
-    @NotBlank @Schema(description = "테마", allowableValues = {"야경", "바다", "산", "카페", "맛집"})
+    @NotBlank @Schema(description = "테마", allowableValues = {"야경", "바다", "산", "카페", "맛집", "와인딩"})
     String theme,
     @Min(1) @Max(3) @Schema(description = "추천 정차 수", defaultValue = "3")
     Integer maxStops,
