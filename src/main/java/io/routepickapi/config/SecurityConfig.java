@@ -2,6 +2,7 @@ package io.routepickapi.config;
 
 import io.routepickapi.security.JwtAccessDeniedHandler;
 import io.routepickapi.security.JwtAuthenticationEntryPoint;
+import io.routepickapi.security.MdcUserFilter;
 import io.routepickapi.security.jwt.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -40,8 +41,11 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http,
-        JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
+    public SecurityFilterChain securityFilterChain(
+        HttpSecurity http,
+        JwtAuthenticationFilter jwtAuthenticationFilter,
+        MdcUserFilter mdcUserFilter
+    ) throws Exception {
         http
             // SESSION STATELESS (JWT)
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -73,7 +77,8 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
             )
             // UsernamePasswordAuthenticationFilter 앞에 JWT 필터 삽입
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterAfter(mdcUserFilter, JwtAuthenticationFilter.class);
         return http.build();
     }
 
