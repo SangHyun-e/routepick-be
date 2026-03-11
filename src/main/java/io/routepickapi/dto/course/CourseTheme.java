@@ -10,7 +10,8 @@ public enum CourseTheme {
     MOUNTAIN("산", List.of("산", "공원", "전망대")),
     CAFE("카페", List.of("카페")),
     FOOD("맛집", List.of("맛집", "음식점", "식당", "레스토랑")),
-    WINDING("와인딩", List.of("와인딩", "산길", "고개", "드라이브", "해안도로"));
+    WINDING("와인딩", List.of("와인딩", "산길", "고개", "드라이브", "해안도로")),
+    COASTAL("해안길", List.of("해안길", "해안도로", "바닷길", "해변", "전망"));
 
     private final String label;
     private final List<String> keywords;
