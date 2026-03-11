@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springdoc.core.annotations.ParameterObject;
@@ -24,6 +25,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -104,6 +108,19 @@ public class CourseController {
     ) {
         log.info("GET /courses/saved - userId={}", currentUser.id());
         return courseRecommendationSaveService.listSaved(currentUser.id(), pageable);
+    }
+
+    @Operation(summary = "추천 코스 삭제", description = "내가 저장한 추천 코스를 삭제합니다.",
+        security = {@SecurityRequirement(name = "bearerAuth")})
+    @DeleteMapping("/saved/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> deleteSaved(
+        @AuthenticationPrincipal AuthUser currentUser,
+        @PathVariable(name = "id") @Min(1) Long id
+    ) {
+        log.info("DELETE /courses/saved/{} - userId={}", id, currentUser.id());
+        courseRecommendationSaveService.deleteSaved(id, currentUser.id());
+        return ResponseEntity.noContent().build();
     }
 
     private String resolveRateLimitKey(AuthUser currentUser, HttpServletRequest request) {

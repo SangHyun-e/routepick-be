@@ -63,6 +63,22 @@ public class CourseRecommendationSaveService {
             pageable).map(CourseRecommendationSaveResponse::from);
     }
 
+    @Transactional
+    public void deleteSaved(Long saveId, Long userId) {
+        if (saveId == null) {
+            throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "삭제할 코스 ID가 필요합니다.");
+        }
+
+        User user = requireActiveUser(userId);
+
+        CourseRecommendationSave saved = courseRecommendationSaveRepository
+            .findByIdAndUserId(saveId, user.getId())
+            .orElseThrow(() -> new CustomException(ErrorType.COMMON_NOT_FOUND,
+                "저장된 추천 코스를 찾을 수 없습니다."));
+
+        courseRecommendationSaveRepository.delete(saved);
+    }
+
     private CourseRecommendationStop toStop(CourseStopRequest stop) {
         return new CourseRecommendationStop(
             stop.name(),
