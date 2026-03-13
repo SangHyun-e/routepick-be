@@ -47,7 +47,8 @@ public class CourseScoreCalculator {
         List<CourseCandidate> courses,
         GeoPoint origin,
         GeoPoint destination,
-        CourseTheme theme
+        CourseTheme theme,
+        int targetStops
     ) {
         if (courses == null || courses.isEmpty()) {
             return List.of();
@@ -55,7 +56,7 @@ public class CourseScoreCalculator {
 
         List<CourseCandidate> scored = new ArrayList<>();
         for (CourseCandidate course : courses) {
-            scored.add(score(course, origin, destination, theme));
+            scored.add(score(course, origin, destination, theme, targetStops));
         }
         scored.sort((first, second) -> Double.compare(second.score(), first.score()));
         return scored;
@@ -65,7 +66,8 @@ public class CourseScoreCalculator {
         CourseCandidate course,
         GeoPoint origin,
         GeoPoint destination,
-        CourseTheme theme
+        CourseTheme theme,
+        int targetStops
     ) {
         double directDistance = GeoUtils.distanceKm(origin, destination);
         double routeNaturalness = directDistance == 0
@@ -75,12 +77,13 @@ public class CourseScoreCalculator {
         double driveSuitability = calculateDriveSuitability(course.stops());
         double categoryDiversity = calculateCategoryDiversity(course.stops());
         double timeFit = calculateTimeFit(course.estimatedMinutes());
+        double stopCountFit = calculateStopCountFit(course.stops().size(), targetStops);
 
         double penalty = calculatePenalty(course.stops());
         List<String> penaltyReasons = collectPenaltyReasons(course.stops());
 
-        double score = 100 * (0.35 * driveSuitability + 0.25 * routeNaturalness
-            + 0.2 * timeFit + 0.2 * categoryDiversity) - penalty;
+        double score = 100 * (0.3 * driveSuitability + 0.2 * routeNaturalness
+            + 0.15 * timeFit + 0.2 * categoryDiversity + 0.15 * stopCountFit) - penalty;
 
         if (theme != null && matchesTheme(course.stops(), theme)) {
             score += 5;
@@ -91,6 +94,7 @@ public class CourseScoreCalculator {
             routeNaturalness,
             timeFit,
             categoryDiversity,
+            stopCountFit,
             penalty,
             penaltyReasons
         );
@@ -124,6 +128,20 @@ public class CourseScoreCalculator {
             return minutes / 40.0;
         }
         return Math.max(0.2, 1.0 - (minutes - 120) / 180.0);
+    }
+
+    private double calculateStopCountFit(int stopCount, int targetStops) {
+        if (targetStops <= 0) {
+            return 0.6;
+        }
+        int diff = Math.abs(stopCount - targetStops);
+        if (diff == 0) {
+            return 1.0;
+        }
+        if (diff == 1) {
+            return 0.7;
+        }
+        return 0.4;
     }
 
     private double calculatePenalty(List<CandidatePlace> stops) {

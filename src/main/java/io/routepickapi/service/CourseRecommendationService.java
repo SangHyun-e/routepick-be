@@ -64,7 +64,13 @@ public class CourseRecommendationService {
             maxStops
         );
 
-        List<CourseCandidate> scored = courseScoreCalculator.scoreCourses(courses, origin, destination, theme);
+        List<CourseCandidate> scored = courseScoreCalculator.scoreCourses(
+            courses,
+            origin,
+            destination,
+            theme,
+            maxStops
+        );
         List<CourseCandidate> validated = finalRecommendationValidator.validateCourses(
             scored,
             origin,
@@ -79,10 +85,16 @@ public class CourseRecommendationService {
                 destination,
                 MIN_STOPS
             );
-            validated = courseScoreCalculator.scoreCourses(fallback, origin, destination, theme);
+            validated = courseScoreCalculator.scoreCourses(
+                fallback,
+                origin,
+                destination,
+                theme,
+                maxStops
+            );
         }
 
-        CourseCandidate bestCourse = validated.isEmpty() ? null : validated.getFirst();
+        CourseCandidate bestCourse = selectBestCourse(validated, maxStops);
         List<CourseStopResponse> stops = bestCourse == null
             ? List.of()
             : bestCourse.stops().stream().map(this::toStopResponse).toList();
@@ -198,5 +210,21 @@ public class CourseRecommendationService {
             theme.label(),
             summary
         );
+    }
+
+    private CourseCandidate selectBestCourse(List<CourseCandidate> courses, int targetStops) {
+        if (courses == null || courses.isEmpty()) {
+            return null;
+        }
+
+        List<CourseCandidate> exact = courses.stream()
+            .filter(course -> course.stops().size() == targetStops)
+            .toList();
+
+        if (!exact.isEmpty()) {
+            return exact.getFirst();
+        }
+
+        return courses.getFirst();
     }
 }

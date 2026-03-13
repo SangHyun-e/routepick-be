@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +42,23 @@ public class CandidatePlaceCollector {
         "카페",
         "관광지",
         "자연"
+    );
+
+    private static final Map<CourseTheme, ThemeRule> THEME_RULES = Map.of(
+        CourseTheme.NIGHT_VIEW,
+        new ThemeRule(Set.of(), List.of("야경", "전망", "전망대", "루프탑", "야경포인트")),
+        CourseTheme.SEA,
+        new ThemeRule(Set.of(), List.of("해변", "바다", "해안", "항구", "포구", "등대")),
+        CourseTheme.MOUNTAIN,
+        new ThemeRule(Set.of(), List.of("산", "국립공원", "등산", "고개", "산책")),
+        CourseTheme.CAFE,
+        new ThemeRule(Set.of("CE7"), List.of("카페", "커피", "로스터리")),
+        CourseTheme.FOOD,
+        new ThemeRule(Set.of(), List.of("시장", "먹자골목", "맛집", "식당", "레스토랑")),
+        CourseTheme.WINDING,
+        new ThemeRule(Set.of(), List.of("와인딩", "산길", "고개", "드라이브", "굽이")),
+        CourseTheme.COASTAL,
+        new ThemeRule(Set.of(), List.of("해안", "해안도로", "해안길", "바다", "바닷길", "등대"))
     );
 
     private final KakaoLocalService kakaoLocalService;
@@ -79,6 +97,10 @@ public class CandidatePlaceCollector {
 
                     FilterDecision decision = placeRuleFilter.filter(candidate);
                     if (!decision.passed()) {
+                        continue;
+                    }
+
+                    if (!matchesTheme(candidate, theme)) {
                         continue;
                     }
 
@@ -126,5 +148,45 @@ public class CandidatePlaceCollector {
                 .forEach(keywords::add);
         }
         return keywords;
+    }
+
+    private boolean matchesTheme(CandidatePlace candidate, CourseTheme theme) {
+        if (theme == null) {
+            return true;
+        }
+
+        ThemeRule rule = THEME_RULES.get(theme);
+        if (rule == null) {
+            return true;
+        }
+
+        if (!rule.requiredGroupCodes().isEmpty()) {
+            String groupCode = candidate.categoryGroupCode();
+            if (groupCode == null || !rule.requiredGroupCodes().contains(groupCode)) {
+                return false;
+            }
+        }
+
+        if (rule.keywords().isEmpty()) {
+            return true;
+        }
+
+        String value = String.join(" ",
+            safeLower(candidate.name()),
+            safeLower(candidate.categoryName()),
+            safeLower(candidate.categoryGroupName())
+        );
+
+        return rule.keywords().stream().anyMatch(value::contains);
+    }
+
+    private String safeLower(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private record ThemeRule(Set<String> requiredGroupCodes, List<String> keywords) {
     }
 }
