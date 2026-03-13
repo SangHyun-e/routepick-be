@@ -1,8 +1,9 @@
 package io.routepickapi.service.recommendation;
 
-import io.routepickapi.dto.course.CourseTheme;
+import io.routepickapi.dto.course.DriveRouteStyle;
 import io.routepickapi.dto.recommendation.CandidatePlace;
 import io.routepickapi.dto.recommendation.CourseCandidate;
+import io.routepickapi.dto.recommendation.DrivePreference;
 import io.routepickapi.dto.recommendation.GeoPoint;
 import io.routepickapi.dto.recommendation.ScoreDetail;
 import java.util.ArrayList;
@@ -47,7 +48,7 @@ public class CourseScoreCalculator {
         List<CourseCandidate> courses,
         GeoPoint origin,
         GeoPoint destination,
-        CourseTheme theme,
+        DrivePreference preference,
         int targetStops
     ) {
         if (courses == null || courses.isEmpty()) {
@@ -56,7 +57,7 @@ public class CourseScoreCalculator {
 
         List<CourseCandidate> scored = new ArrayList<>();
         for (CourseCandidate course : courses) {
-            scored.add(score(course, origin, destination, theme, targetStops));
+            scored.add(score(course, origin, destination, preference, targetStops));
         }
         scored.sort((first, second) -> Double.compare(second.score(), first.score()));
         return scored;
@@ -66,7 +67,7 @@ public class CourseScoreCalculator {
         CourseCandidate course,
         GeoPoint origin,
         GeoPoint destination,
-        CourseTheme theme,
+        DrivePreference preference,
         int targetStops
     ) {
         double directDistance = GeoUtils.distanceKm(origin, destination);
@@ -78,16 +79,14 @@ public class CourseScoreCalculator {
         double categoryDiversity = calculateCategoryDiversity(course.stops());
         double timeFit = calculateTimeFit(course.estimatedMinutes());
         double stopCountFit = calculateStopCountFit(course.stops().size(), targetStops);
+        double preferenceFit = calculatePreferenceFit(course.stops(), preference);
 
         double penalty = calculatePenalty(course.stops());
         List<String> penaltyReasons = collectPenaltyReasons(course.stops());
 
-        double score = 100 * (0.3 * driveSuitability + 0.2 * routeNaturalness
-            + 0.15 * timeFit + 0.2 * categoryDiversity + 0.15 * stopCountFit) - penalty;
-
-        if (theme != null && matchesTheme(course.stops(), theme)) {
-            score += 5;
-        }
+        double score = 100 * (0.25 * driveSuitability + 0.2 * routeNaturalness
+            + 0.15 * timeFit + 0.15 * categoryDiversity + 0.1 * stopCountFit
+            + 0.15 * preferenceFit) - penalty;
 
         ScoreDetail scoreDetail = new ScoreDetail(
             driveSuitability,
@@ -95,6 +94,7 @@ public class CourseScoreCalculator {
             timeFit,
             categoryDiversity,
             stopCountFit,
+            preferenceFit,
             penalty,
             penaltyReasons
         );
@@ -144,6 +144,40 @@ public class CourseScoreCalculator {
         return 0.4;
     }
 
+    private double calculatePreferenceFit(List<CandidatePlace> stops, DrivePreference preference) {
+        if (preference == null) {
+            return 0.5;
+        }
+
+        List<String> moodKeywords = preference.moods().stream()
+            .flatMap(mood -> mood.keywords().stream())
+            .toList();
+        List<String> routeKeywords = preference.routeStyles().stream()
+            .filter(style -> style != DriveRouteStyle.NORMAL)
+            .flatMap(style -> style.keywords().stream())
+            .toList();
+        List<String> stopKeywords = preference.stopTypes().stream()
+            .flatMap(type -> type.keywords().stream())
+            .toList();
+
+        double moodFit = calculateKeywordFit(stops, moodKeywords);
+        double routeFit = calculateKeywordFit(stops, routeKeywords);
+        double stopFit = calculateKeywordFit(stops, stopKeywords);
+
+        return (moodFit + routeFit + stopFit) / 3.0;
+    }
+
+    private double calculateKeywordFit(List<CandidatePlace> stops, List<String> keywords) {
+        if (keywords == null || keywords.isEmpty() || stops.isEmpty()) {
+            return 0.5;
+        }
+
+        long matched = stops.stream()
+            .filter(stop -> containsAny(stop, keywords))
+            .count();
+        return matched / (double) stops.size();
+    }
+
     private double calculatePenalty(List<CandidatePlace> stops) {
         double penalty = 0;
         for (int index = 0; index < stops.size() - 1; index++) {
@@ -168,21 +202,6 @@ public class CourseScoreCalculator {
             }
         }
         return reasons;
-    }
-
-    private boolean matchesTheme(List<CandidatePlace> stops, CourseTheme theme) {
-        if (theme == null || theme.keywords() == null) {
-            return false;
-        }
-        for (CandidatePlace stop : stops) {
-            String value = (stop.name() + " " + stop.categoryName()).toLowerCase(Locale.ROOT);
-            for (String keyword : theme.keywords()) {
-                if (keyword != null && value.contains(keyword.toLowerCase(Locale.ROOT))) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     private boolean containsAny(CandidatePlace stop, List<String> keywords) {

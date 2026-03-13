@@ -8,11 +8,12 @@ public record ScoreDetail(
     double timeFit,
     double categoryDiversity,
     double stopCountFit,
+    double preferenceFit,
     double penalty,
     List<String> penaltyReasons
 ) {
 
     public static ScoreDetail empty() {
-        return new ScoreDetail(0, 0, 0, 0, 0, 0, List.of());
+        return new ScoreDetail(0, 0, 0, 0, 0, 0, 0, List.of());
     }
 }

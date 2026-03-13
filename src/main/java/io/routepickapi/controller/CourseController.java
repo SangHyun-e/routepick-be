@@ -47,12 +47,18 @@ public class CourseController {
     private final CourseCurationService courseCurationService;
     private final NotificationService notificationService;
 
-    @Operation(summary = "드라이브 코스 추천", description = "출발지/도착지/테마 기반으로 코스를 추천합니다.")
+    @Operation(summary = "드라이브 코스 추천", description = "출발지/도착지/추천 조건 기반으로 코스를 추천합니다.")
     @PostMapping("/recommend")
     public CourseRecommendationResponse recommend(
         @Valid @RequestBody CourseRecommendationRequest request
     ) {
-        log.info("POST /courses/recommend - theme={}", request.theme());
+        log.info(
+            "POST /courses/recommend - moods={}, stopTypes={}, routeStyles={}, auto={}",
+            request.moods(),
+            request.stopTypes(),
+            request.routeStyles(),
+            request.autoRecommend()
+        );
         return courseRecommendationService.recommend(request);
     }
 

@@ -5,11 +5,14 @@ import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.course.CourseRecommendationRequest;
 import io.routepickapi.dto.course.CourseRecommendationResponse;
 import io.routepickapi.dto.course.CourseStopResponse;
-import io.routepickapi.dto.course.CourseTheme;
+import io.routepickapi.dto.course.DriveMood;
+import io.routepickapi.dto.course.DriveRouteStyle;
+import io.routepickapi.dto.course.DriveStopType;
 import io.routepickapi.dto.place.KakaoPlaceSearchResponse;
 import io.routepickapi.dto.place.KakaoPlaceSearchResponse.KakaoPlaceDocument;
 import io.routepickapi.dto.recommendation.CandidatePlace;
 import io.routepickapi.dto.recommendation.CourseCandidate;
+import io.routepickapi.dto.recommendation.DrivePreference;
 import io.routepickapi.dto.recommendation.GeoPoint;
 import io.routepickapi.service.recommendation.CandidatePlaceCollector;
 import io.routepickapi.service.recommendation.CourseCandidateBuilder;
@@ -17,9 +20,10 @@ import io.routepickapi.service.recommendation.CourseScoreCalculator;
 import io.routepickapi.service.recommendation.FinalRecommendationValidator;
 import io.routepickapi.service.recommendation.PlaceDeduplicator;
 import io.routepickapi.service.recommendation.RecommendationFallbackPolicy;
-import java.util.ArrayList;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -46,14 +50,19 @@ public class CourseRecommendationService {
             throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "요청값이 비어있습니다.");
         }
 
-        CourseTheme theme = CourseTheme.from(request.theme());
+        DrivePreference preference = resolvePreferences(
+            request.moods(),
+            request.stopTypes(),
+            request.routeStyles(),
+            request.autoRecommend()
+        );
         int maxStops = sanitizeMaxStops(request.maxStops());
         double maxDetourKm = sanitizeMaxDetourKm(request.maxDetourKm());
 
         GeoPoint origin = resolvePoint(request.origin());
         GeoPoint destination = resolvePoint(request.destination());
 
-        List<CandidatePlace> candidates = candidatePlaceCollector.collectCandidates(origin, destination, theme);
+        List<CandidatePlace> candidates = candidatePlaceCollector.collectCandidates(origin, destination, preference);
         List<CandidatePlace> deduplicated = placeDeduplicator.deduplicate(candidates);
 
         List<CourseCandidate> courses = courseCandidateBuilder.buildCourses(
@@ -68,7 +77,7 @@ public class CourseRecommendationService {
             courses,
             origin,
             destination,
-            theme,
+            preference,
             maxStops
         );
         List<CourseCandidate> validated = finalRecommendationValidator.validateCourses(
@@ -89,7 +98,7 @@ public class CourseRecommendationService {
                 fallback,
                 origin,
                 destination,
-                theme,
+                preference,
                 maxStops
             );
         }
@@ -100,26 +109,33 @@ public class CourseRecommendationService {
             : bestCourse.stops().stream().map(this::toStopResponse).toList();
 
         String routeSummary = buildRouteSummary(request.origin(), request.destination(), stops);
-        String explanation = buildExplanation(theme, stops);
+        String explanation = buildExplanation(preference, stops);
 
-        log.info("추천 코스 생성 완료 - theme={}, stops={}", theme.label(), stops.size());
+        log.info("추천 코스 생성 완료 - stops={}", stops.size());
         return new CourseRecommendationResponse(stops, routeSummary, explanation);
     }
 
     public List<CourseStopResponse> recommendCandidates(
         String origin,
         String destination,
-        CourseTheme theme,
-        Integer maxDetourKm,
+        List<String> moods,
+        List<String> stopTypes,
+        List<String> routeStyles,
+        Boolean autoRecommend,
         int limit
     ) {
         if (limit <= 0) {
             return List.of();
         }
 
+        DrivePreference preference = resolvePreferences(moods, stopTypes, routeStyles, autoRecommend);
         GeoPoint originPoint = resolvePoint(origin);
         GeoPoint destinationPoint = resolvePoint(destination);
-        List<CandidatePlace> candidates = candidatePlaceCollector.collectCandidates(originPoint, destinationPoint, theme);
+        List<CandidatePlace> candidates = candidatePlaceCollector.collectCandidates(
+            originPoint,
+            destinationPoint,
+            preference
+        );
         List<CandidatePlace> deduplicated = placeDeduplicator.deduplicate(candidates);
 
         return deduplicated.stream()
@@ -196,18 +212,25 @@ public class CourseRecommendationService {
         return String.format("%s → %s → %s", origin, stopNames, destination);
     }
 
-    private String buildExplanation(CourseTheme theme, List<CourseStopResponse> stops) {
+    private String buildExplanation(DrivePreference preference, List<CourseStopResponse> stops) {
         if (stops.isEmpty()) {
             return "조건에 맞는 코스가 부족해 기본 경로를 먼저 안내합니다.";
         }
 
+        String preferenceSummary = buildPreferenceSummary(preference);
         List<String> stopNames = stops.stream()
             .map(CourseStopResponse::name)
             .toList();
         String summary = String.join(", ", stopNames);
+        if (preferenceSummary.isBlank()) {
+            return String.format(Locale.KOREAN,
+                "추천 경유지는 %s입니다.",
+                summary
+            );
+        }
         return String.format(Locale.KOREAN,
-            "%s 테마에 맞는 코스를 구성했습니다. 추천 경유지는 %s입니다.",
-            theme.label(),
+            "%s 조건으로 코스를 구성했습니다. 추천 경유지는 %s입니다.",
+            preferenceSummary,
             summary
         );
     }
@@ -226,5 +249,90 @@ public class CourseRecommendationService {
         }
 
         return courses.getFirst();
+    }
+
+    private DrivePreference resolvePreferences(
+        List<String> moodLabels,
+        List<String> stopTypeLabels,
+        List<String> routeStyleLabels,
+        Boolean autoRecommend
+    ) {
+        List<DriveMood> moods = DriveMood.fromLabels(moodLabels);
+        List<DriveStopType> stopTypes = DriveStopType.fromLabels(stopTypeLabels);
+        List<DriveRouteStyle> routeStyles = DriveRouteStyle.fromLabels(routeStyleLabels);
+        boolean isAutoRecommend = Boolean.TRUE.equals(autoRecommend)
+            || (moods.isEmpty() && stopTypes.isEmpty() && routeStyles.isEmpty());
+
+        if (isAutoRecommend) {
+            moods = defaultMoods();
+            stopTypes = List.of(DriveStopType.MOOD_CAFE, DriveStopType.VIEWPOINT, DriveStopType.WALK);
+            routeStyles = List.of(DriveRouteStyle.NORMAL);
+        } else {
+            if (moods.isEmpty()) {
+                moods = List.of(DriveMood.HEALING);
+            }
+            if (stopTypes.isEmpty()) {
+                stopTypes = List.of(DriveStopType.MOOD_CAFE, DriveStopType.VIEWPOINT);
+            }
+            if (routeStyles.isEmpty()) {
+                routeStyles = List.of(DriveRouteStyle.NORMAL);
+            }
+        }
+
+        return new DrivePreference(moods, stopTypes, routeStyles, isAutoRecommend);
+    }
+
+    private List<DriveMood> defaultMoods() {
+        LocalTime now = LocalTime.now();
+        if (now.isAfter(LocalTime.of(18, 0)) || now.isBefore(LocalTime.of(5, 0))) {
+            return List.of(DriveMood.NIGHT_VIEW);
+        }
+        return List.of(DriveMood.HEALING);
+    }
+
+    private String buildPreferenceSummary(DrivePreference preference) {
+        if (preference == null) {
+            return "";
+        }
+        if (preference.autoRecommend()) {
+            return "서비스 추천";
+        }
+
+        String moods = preference.moods().stream()
+            .map(DriveMood::label)
+            .filter(Objects::nonNull)
+            .distinct()
+            .reduce((first, second) -> first + ", " + second)
+            .orElse("");
+        String stops = preference.stopTypes().stream()
+            .map(DriveStopType::label)
+            .filter(Objects::nonNull)
+            .distinct()
+            .reduce((first, second) -> first + ", " + second)
+            .orElse("");
+        String routes = preference.routeStyles().stream()
+            .map(DriveRouteStyle::label)
+            .filter(Objects::nonNull)
+            .distinct()
+            .reduce((first, second) -> first + ", " + second)
+            .orElse("");
+
+        StringBuilder summary = new StringBuilder();
+        if (!moods.isBlank()) {
+            summary.append("분위기: ").append(moods);
+        }
+        if (!stops.isBlank()) {
+            if (summary.length() > 0) {
+                summary.append(" | ");
+            }
+            summary.append("들를 곳: ").append(stops);
+        }
+        if (!routes.isBlank()) {
+            if (summary.length() > 0) {
+                summary.append(" | ");
+            }
+            summary.append("길 스타일: ").append(routes);
+        }
+        return summary.toString();
     }
 }
