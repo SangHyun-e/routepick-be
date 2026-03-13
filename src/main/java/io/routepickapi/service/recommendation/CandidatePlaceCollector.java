@@ -28,7 +28,6 @@ import org.springframework.stereotype.Component;
 public class CandidatePlaceCollector {
 
     private static final int MIDPOINT_COUNT = 6;
-    private static final int SEARCH_RADIUS_METERS = 4000;
     private static final int SEARCH_PAGE = 1;
     private static final int SEARCH_SIZE = 15;
 
@@ -56,6 +55,18 @@ public class CandidatePlaceCollector {
         GeoPoint destination,
         DrivePreference preference
     ) {
+        return collectCandidates(origin, destination, preference, CandidateSearchOption.defaultOption());
+    }
+
+    public List<CandidatePlace> collectCandidates(
+        GeoPoint origin,
+        GeoPoint destination,
+        DrivePreference preference,
+        CandidateSearchOption searchOption
+    ) {
+        CandidateSearchOption option = searchOption == null
+            ? CandidateSearchOption.defaultOption()
+            : searchOption;
         List<GeoPoint> searchPoints = buildSearchPoints(origin, destination);
         Set<String> keywords = buildKeywords(preference);
         Map<String, CandidatePlace> results = new LinkedHashMap<>();
@@ -66,7 +77,7 @@ public class CandidatePlaceCollector {
                     keyword,
                     point.x(),
                     point.y(),
-                    SEARCH_RADIUS_METERS,
+                    option.searchRadiusMeters(),
                     SEARCH_PAGE,
                     SEARCH_SIZE
                 );
@@ -86,11 +97,8 @@ public class CandidatePlaceCollector {
                         continue;
                     }
 
-                    if (!matchesStopTypes(candidate, preference.stopTypes())) {
-                        continue;
-                    }
-
-                    if (!matchesRouteStyles(candidate, preference.routeStyles())) {
+                    if (option.applyStopTypeFilter()
+                        && !matchesStopTypes(candidate, preference.stopTypes())) {
                         continue;
                     }
 
@@ -149,6 +157,7 @@ public class CandidatePlaceCollector {
             .forEach(keywords::add);
 
         preference.routeStyles().stream()
+            .filter(style -> style != DriveRouteStyle.NORMAL && style != DriveRouteStyle.WINDING)
             .flatMap(style -> style.keywords().stream())
             .filter(Objects::nonNull)
             .map(String::trim)
@@ -194,43 +203,6 @@ public class CandidatePlaceCollector {
         }
 
         return stopType.keywords().stream().anyMatch(value::contains);
-    }
-
-    private boolean matchesRouteStyles(CandidatePlace candidate, List<DriveRouteStyle> routeStyles) {
-        if (routeStyles == null || routeStyles.isEmpty()) {
-            return true;
-        }
-
-        List<DriveRouteStyle> activeStyles = routeStyles.stream()
-            .filter(style -> style != DriveRouteStyle.NORMAL)
-            .toList();
-
-        if (activeStyles.isEmpty()) {
-            return true;
-        }
-
-        String value = String.join(" ",
-            safeLower(candidate.name()),
-            safeLower(candidate.categoryName()),
-            safeLower(candidate.categoryGroupName())
-        );
-
-        for (DriveRouteStyle style : activeStyles) {
-            if (!style.blockedKeywords().isEmpty()
-                && style.blockedKeywords().stream().anyMatch(value::contains)) {
-                return false;
-            }
-        }
-
-        return activeStyles.stream().anyMatch(style -> matchesKeywords(value, style.keywords()));
-    }
-
-    private boolean matchesKeywords(String value, List<String> keywords) {
-        if (keywords == null || keywords.isEmpty()) {
-            return false;
-        }
-
-        return keywords.stream().anyMatch(value::contains);
     }
 
     private String safeLower(String value) {

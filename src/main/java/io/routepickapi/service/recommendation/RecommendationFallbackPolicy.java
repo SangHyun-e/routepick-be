@@ -19,14 +19,19 @@ public class RecommendationFallbackPolicy {
         GeoPoint destination,
         int minStops
     ) {
-        if (candidates == null || candidates.size() < minStops) {
+        if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }
 
         List<CandidatePlace> sorted = new ArrayList<>(candidates);
         sorted.sort(Comparator.comparingDouble(place -> distanceKm(origin, place)));
 
-        List<CandidatePlace> stops = sorted.stream().limit(minStops).toList();
+        int targetStops = Math.min(minStops, sorted.size());
+        if (targetStops <= 0) {
+            return List.of();
+        }
+
+        List<CandidatePlace> stops = sorted.stream().limit(targetStops).toList();
         double totalDistanceKm = calculateTotalDistance(origin, destination, stops);
         int estimatedMinutes = GeoUtils.estimateMinutes(totalDistanceKm);
 

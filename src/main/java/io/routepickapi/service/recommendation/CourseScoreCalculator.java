@@ -79,7 +79,7 @@ public class CourseScoreCalculator {
         double categoryDiversity = calculateCategoryDiversity(course.stops());
         double timeFit = calculateTimeFit(course.estimatedMinutes());
         double stopCountFit = calculateStopCountFit(course.stops().size(), targetStops);
-        double preferenceFit = calculatePreferenceFit(course.stops(), preference);
+        double preferenceFit = calculatePreferenceFit(course, origin, destination, preference);
 
         double penalty = calculatePenalty(course.stops());
         List<String> penaltyReasons = collectPenaltyReasons(course.stops());
@@ -144,7 +144,12 @@ public class CourseScoreCalculator {
         return 0.4;
     }
 
-    private double calculatePreferenceFit(List<CandidatePlace> stops, DrivePreference preference) {
+    private double calculatePreferenceFit(
+        CourseCandidate course,
+        GeoPoint origin,
+        GeoPoint destination,
+        DrivePreference preference
+    ) {
         if (preference == null) {
             return 0.5;
         }
@@ -152,19 +157,93 @@ public class CourseScoreCalculator {
         List<String> moodKeywords = preference.moods().stream()
             .flatMap(mood -> mood.keywords().stream())
             .toList();
-        List<String> routeKeywords = preference.routeStyles().stream()
-            .filter(style -> style != DriveRouteStyle.NORMAL)
-            .flatMap(style -> style.keywords().stream())
-            .toList();
         List<String> stopKeywords = preference.stopTypes().stream()
             .flatMap(type -> type.keywords().stream())
             .toList();
 
-        double moodFit = calculateKeywordFit(stops, moodKeywords);
-        double routeFit = calculateKeywordFit(stops, routeKeywords);
-        double stopFit = calculateKeywordFit(stops, stopKeywords);
+        double moodFit = calculateKeywordFit(course.stops(), moodKeywords);
+        double routeFit = calculateRouteStyleFit(course, origin, destination, preference.routeStyles());
+        double stopFit = calculateKeywordFit(course.stops(), stopKeywords);
 
         return (moodFit + routeFit + stopFit) / 3.0;
+    }
+
+    private double calculateRouteStyleFit(
+        CourseCandidate course,
+        GeoPoint origin,
+        GeoPoint destination,
+        List<DriveRouteStyle> routeStyles
+    ) {
+        if (routeStyles == null || routeStyles.isEmpty()) {
+            return 0.5;
+        }
+
+        List<DriveRouteStyle> activeStyles = routeStyles.stream()
+            .filter(style -> style != DriveRouteStyle.NORMAL)
+            .toList();
+        if (activeStyles.isEmpty()) {
+            return 0.5;
+        }
+
+        double bestScore = 0.0;
+        for (DriveRouteStyle style : activeStyles) {
+            double styleScore = style == DriveRouteStyle.WINDING
+                ? calculateWindingScore(course, origin, destination)
+                : calculateKeywordFit(course.stops(), style.keywords());
+            bestScore = Math.max(bestScore, styleScore);
+        }
+        return bestScore;
+    }
+
+    private double calculateWindingScore(CourseCandidate course, GeoPoint origin, GeoPoint destination) {
+        List<GeoPoint> points = new ArrayList<>();
+        points.add(origin);
+        for (CandidatePlace stop : course.stops()) {
+            points.add(new GeoPoint(stop.x(), stop.y()));
+        }
+        points.add(destination);
+
+        if (points.size() < 3) {
+            return 0.0;
+        }
+
+        double totalAngle = 0.0;
+        int angleCount = 0;
+        for (int index = 1; index < points.size() - 1; index++) {
+            GeoPoint previous = points.get(index - 1);
+            GeoPoint current = points.get(index);
+            GeoPoint next = points.get(index + 1);
+            double angle = calculateTurnAngle(previous, current, next);
+            if (!Double.isNaN(angle)) {
+                totalAngle += angle;
+                angleCount++;
+            }
+        }
+
+        if (angleCount == 0) {
+            return 0.0;
+        }
+
+        double averageAngle = totalAngle / angleCount;
+        return Math.min(1.0, averageAngle / Math.PI);
+    }
+
+    private double calculateTurnAngle(GeoPoint previous, GeoPoint current, GeoPoint next) {
+        double vectorOneX = current.x() - previous.x();
+        double vectorOneY = current.y() - previous.y();
+        double vectorTwoX = next.x() - current.x();
+        double vectorTwoY = next.y() - current.y();
+
+        double magnitudeOne = Math.hypot(vectorOneX, vectorOneY);
+        double magnitudeTwo = Math.hypot(vectorTwoX, vectorTwoY);
+        if (magnitudeOne == 0 || magnitudeTwo == 0) {
+            return Double.NaN;
+        }
+
+        double cosine = (vectorOneX * vectorTwoX + vectorOneY * vectorTwoY)
+            / (magnitudeOne * magnitudeTwo);
+        double normalized = Math.max(-1.0, Math.min(1.0, cosine));
+        return Math.acos(normalized);
     }
 
     private double calculateKeywordFit(List<CandidatePlace> stops, List<String> keywords) {
