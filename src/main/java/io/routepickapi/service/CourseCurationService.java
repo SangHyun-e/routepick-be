@@ -6,7 +6,6 @@ import io.routepickapi.dto.course.CourseCurationRequest;
 import io.routepickapi.dto.course.CourseCurationResponse;
 import io.routepickapi.dto.course.CourseStopRequest;
 import io.routepickapi.dto.course.CourseStopResponse;
-import io.routepickapi.dto.course.CourseTheme;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -37,9 +36,8 @@ public class CourseCurationService {
 
         rateLimiter.validate(rateLimitKey);
 
-        CourseTheme theme = CourseTheme.from(request.theme());
         int extraStops = sanitizeExtraStops(request.extraStops());
-        List<CourseStopResponse> candidates = loadCandidates(request, theme);
+        List<CourseStopResponse> candidates = loadCandidates(request);
         List<CourseStopResponse> filteredCandidates = filterCandidates(candidates, request.stops());
 
         String prompt = buildPrompt(request, filteredCandidates, extraStops);
@@ -62,16 +60,15 @@ public class CourseCurationService {
         );
     }
 
-    private List<CourseStopResponse> loadCandidates(
-        CourseCurationRequest request,
-        CourseTheme theme
-    ) {
+    private List<CourseStopResponse> loadCandidates(CourseCurationRequest request) {
         try {
             return courseRecommendationService.recommendCandidates(
                 request.origin(),
                 request.destination(),
-                theme,
-                null,
+                request.moods(),
+                request.stopTypes(),
+                request.routeStyles(),
+                request.autoRecommend(),
                 EXTRA_CANDIDATE_LIMIT
             );
         } catch (CustomException ex) {
@@ -89,6 +86,7 @@ public class CourseCurationService {
             .map(this::formatStop)
             .collect(Collectors.joining("\n"));
         String candidatesDescription = formatCandidates(candidates);
+        String preferenceSummary = buildPreferenceSummary(request);
 
         return """
             Role: 대한민국 최고의 드라이브 코스 큐레이터 '크루저(Cruiser)'
@@ -133,7 +131,7 @@ public class CourseCurationService {
             Input Data:
             - 출발지: %s
             - 도착지: %s
-            - 테마: %s
+            - 추천 조건: %s
             - 경로 요약: %s
             - 추천 설명: %s
             - 추천 정차 장소:
@@ -143,7 +141,7 @@ public class CourseCurationService {
             """.formatted(
             request.origin(),
             request.destination(),
-            request.theme(),
+            preferenceSummary,
             request.routeSummary(),
             request.explanation(),
             stopsDescription,
@@ -297,11 +295,61 @@ public class CourseCurationService {
 
         return new CourseCurationResponse(
             "드라이브 코스 추천",
-            request.theme() + " 테마 기반으로 추천했습니다.",
+            buildPreferenceSummary(request) + " 조건으로 추천했습니다.",
             routeDetails,
             driveInfo,
             List.of(),
             extras
         );
+    }
+
+    private String buildPreferenceSummary(CourseCurationRequest request) {
+        if (request == null) {
+            return "서비스 추천";
+        }
+
+        if (Boolean.TRUE.equals(request.autoRecommend())) {
+            return "서비스 추천";
+        }
+
+        String summary = request.preferenceSummary();
+        if (summary != null && !summary.isBlank()) {
+            return summary;
+        }
+
+        String moods = joinValues(request.moods());
+        String stops = joinValues(request.stopTypes());
+        String routes = joinValues(request.routeStyles());
+
+        StringBuilder builder = new StringBuilder();
+        if (!moods.isBlank()) {
+            builder.append("분위기: ").append(moods);
+        }
+        if (!stops.isBlank()) {
+            if (builder.length() > 0) {
+                builder.append(" | ");
+            }
+            builder.append("들를 곳: ").append(stops);
+        }
+        if (!routes.isBlank()) {
+            if (builder.length() > 0) {
+                builder.append(" | ");
+            }
+            builder.append("길 스타일: ").append(routes);
+        }
+
+        return builder.length() == 0 ? "서비스 추천" : builder.toString();
+    }
+
+    private String joinValues(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return "";
+        }
+        return values.stream()
+            .filter(Objects::nonNull)
+            .map(String::trim)
+            .filter(value -> !value.isBlank())
+            .distinct()
+            .collect(Collectors.joining(", "));
     }
 }

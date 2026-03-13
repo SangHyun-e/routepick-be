@@ -1,9 +1,12 @@
 package io.routepickapi.service.recommendation;
 
-import io.routepickapi.dto.course.CourseTheme;
+import io.routepickapi.dto.course.DriveMood;
+import io.routepickapi.dto.course.DriveRouteStyle;
+import io.routepickapi.dto.course.DriveStopType;
 import io.routepickapi.dto.place.KakaoPlaceSearchResponse;
 import io.routepickapi.dto.place.KakaoPlaceSearchResponse.KakaoPlaceDocument;
 import io.routepickapi.dto.recommendation.CandidatePlace;
+import io.routepickapi.dto.recommendation.DrivePreference;
 import io.routepickapi.dto.recommendation.FilterDecision;
 import io.routepickapi.dto.recommendation.GeoPoint;
 import io.routepickapi.service.KakaoLocalService;
@@ -11,8 +14,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -44,35 +47,6 @@ public class CandidatePlaceCollector {
         "자연"
     );
 
-    private static final List<String> SEA_BLOCKLIST = List.of(
-        "수산",
-        "어시장",
-        "수산시장",
-        "시장",
-        "마트",
-        "회",
-        "횟집",
-        "건어물",
-        "활어"
-    );
-
-    private static final Map<CourseTheme, ThemeRule> THEME_RULES = Map.of(
-        CourseTheme.NIGHT_VIEW,
-        new ThemeRule(Set.of(), List.of("야경", "전망", "전망대", "루프탑", "야경포인트"), List.of()),
-        CourseTheme.SEA,
-        new ThemeRule(Set.of(), List.of("해변", "바다", "해안", "항구", "포구", "등대"), SEA_BLOCKLIST),
-        CourseTheme.MOUNTAIN,
-        new ThemeRule(Set.of(), List.of("산", "국립공원", "등산", "고개", "산책"), List.of()),
-        CourseTheme.CAFE,
-        new ThemeRule(Set.of("CE7"), List.of("카페", "커피", "로스터리"), List.of()),
-        CourseTheme.FOOD,
-        new ThemeRule(Set.of(), List.of("시장", "먹자골목", "맛집", "식당", "레스토랑"), List.of()),
-        CourseTheme.WINDING,
-        new ThemeRule(Set.of(), List.of("와인딩", "산길", "고개", "드라이브", "굽이"), List.of()),
-        CourseTheme.COASTAL,
-        new ThemeRule(Set.of(), List.of("해안", "해안도로", "해안길", "바다", "바닷길", "등대"), SEA_BLOCKLIST)
-    );
-
     private final KakaoLocalService kakaoLocalService;
     private final KakaoPlaceNormalizer kakaoPlaceNormalizer;
     private final PlaceRuleFilter placeRuleFilter;
@@ -80,10 +54,10 @@ public class CandidatePlaceCollector {
     public List<CandidatePlace> collectCandidates(
         GeoPoint origin,
         GeoPoint destination,
-        CourseTheme theme
+        DrivePreference preference
     ) {
         List<GeoPoint> searchPoints = buildSearchPoints(origin, destination);
-        Set<String> keywords = buildKeywords(theme);
+        Set<String> keywords = buildKeywords(preference);
         Map<String, CandidatePlace> results = new LinkedHashMap<>();
 
         for (GeoPoint point : searchPoints) {
@@ -112,7 +86,11 @@ public class CandidatePlaceCollector {
                         continue;
                     }
 
-                    if (!matchesTheme(candidate, theme)) {
+                    if (!matchesStopTypes(candidate, preference.stopTypes())) {
+                        continue;
+                    }
+
+                    if (!matchesRouteStyles(candidate, preference.routeStyles())) {
                         continue;
                     }
 
@@ -150,33 +128,47 @@ public class CandidatePlaceCollector {
         return points;
     }
 
-    private Set<String> buildKeywords(CourseTheme theme) {
+    private Set<String> buildKeywords(DrivePreference preference) {
         Set<String> keywords = new LinkedHashSet<>(BASE_KEYWORDS);
-        if (theme != null && theme.keywords() != null) {
-            theme.keywords().stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(value -> !value.isBlank())
-                .forEach(keywords::add);
+        if (preference == null) {
+            return keywords;
         }
+
+        preference.moods().stream()
+            .flatMap(mood -> mood.keywords().stream())
+            .filter(Objects::nonNull)
+            .map(String::trim)
+            .filter(value -> !value.isBlank())
+            .forEach(keywords::add);
+
+        preference.stopTypes().stream()
+            .flatMap(type -> type.keywords().stream())
+            .filter(Objects::nonNull)
+            .map(String::trim)
+            .filter(value -> !value.isBlank())
+            .forEach(keywords::add);
+
+        preference.routeStyles().stream()
+            .flatMap(style -> style.keywords().stream())
+            .filter(Objects::nonNull)
+            .map(String::trim)
+            .filter(value -> !value.isBlank())
+            .forEach(keywords::add);
+
         return keywords;
     }
 
-    private boolean matchesTheme(CandidatePlace candidate, CourseTheme theme) {
-        if (theme == null) {
+    private boolean matchesStopTypes(CandidatePlace candidate, List<DriveStopType> stopTypes) {
+        if (stopTypes == null || stopTypes.isEmpty()) {
             return true;
         }
 
-        ThemeRule rule = THEME_RULES.get(theme);
-        if (rule == null) {
-            return true;
-        }
+        return stopTypes.stream().anyMatch(stopType -> matchesStopType(candidate, stopType));
+    }
 
-        if (!rule.requiredGroupCodes().isEmpty()) {
-            String groupCode = candidate.categoryGroupCode();
-            if (groupCode == null || !rule.requiredGroupCodes().contains(groupCode)) {
-                return false;
-            }
+    private boolean matchesStopType(CandidatePlace candidate, DriveStopType stopType) {
+        if (stopType == null) {
+            return false;
         }
 
         String value = String.join(" ",
@@ -185,16 +177,60 @@ public class CandidatePlaceCollector {
             safeLower(candidate.categoryGroupName())
         );
 
-        if (!rule.blockedKeywords().isEmpty()
-            && rule.blockedKeywords().stream().anyMatch(value::contains)) {
+        if (!stopType.requiredGroupCodes().isEmpty()) {
+            String groupCode = candidate.categoryGroupCode();
+            if (groupCode == null || !stopType.requiredGroupCodes().contains(groupCode)) {
+                return false;
+            }
+        }
+
+        if (!stopType.blockedKeywords().isEmpty()
+            && stopType.blockedKeywords().stream().anyMatch(value::contains)) {
             return false;
         }
 
-        if (rule.keywords().isEmpty()) {
+        if (stopType.keywords().isEmpty()) {
             return true;
         }
 
-        return rule.keywords().stream().anyMatch(value::contains);
+        return stopType.keywords().stream().anyMatch(value::contains);
+    }
+
+    private boolean matchesRouteStyles(CandidatePlace candidate, List<DriveRouteStyle> routeStyles) {
+        if (routeStyles == null || routeStyles.isEmpty()) {
+            return true;
+        }
+
+        List<DriveRouteStyle> activeStyles = routeStyles.stream()
+            .filter(style -> style != DriveRouteStyle.NORMAL)
+            .toList();
+
+        if (activeStyles.isEmpty()) {
+            return true;
+        }
+
+        String value = String.join(" ",
+            safeLower(candidate.name()),
+            safeLower(candidate.categoryName()),
+            safeLower(candidate.categoryGroupName())
+        );
+
+        for (DriveRouteStyle style : activeStyles) {
+            if (!style.blockedKeywords().isEmpty()
+                && style.blockedKeywords().stream().anyMatch(value::contains)) {
+                return false;
+            }
+        }
+
+        return activeStyles.stream().anyMatch(style -> matchesKeywords(value, style.keywords()));
+    }
+
+    private boolean matchesKeywords(String value, List<String> keywords) {
+        if (keywords == null || keywords.isEmpty()) {
+            return false;
+        }
+
+        return keywords.stream().anyMatch(value::contains);
     }
 
     private String safeLower(String value) {
@@ -202,12 +238,5 @@ public class CandidatePlaceCollector {
             return "";
         }
         return value.trim().toLowerCase(Locale.ROOT);
-    }
-
-    private record ThemeRule(
-        Set<String> requiredGroupCodes,
-        List<String> keywords,
-        List<String> blockedKeywords
-    ) {
     }
 }

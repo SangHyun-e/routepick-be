@@ -11,7 +11,15 @@ import java.util.List;
 public record CourseCurationRequest(
     @NotBlank @Schema(description = "출발지") String origin,
     @NotBlank @Schema(description = "도착지") String destination,
-    @NotBlank @Schema(description = "테마") String theme,
+    @Schema(description = "추천 조건 요약") String preferenceSummary,
+    @Schema(description = "분위기", allowableValues = {"야경", "감성", "힐링", "한적한"})
+    List<String> moods,
+    @Schema(description = "들를 곳", allowableValues = {"분좋카", "맛집", "전망대", "산책"})
+    List<String> stopTypes,
+    @Schema(description = "길 스타일", allowableValues = {"해안길", "산길", "와인딩", "무난한"})
+    List<String> routeStyles,
+    @Schema(description = "서비스 추천 여부")
+    Boolean autoRecommend,
     @NotBlank @Schema(description = "경로 요약") String routeSummary,
     @NotBlank @Schema(description = "추천 설명") String explanation,
     @NotNull @Size(min = 1, max = 10) @Valid

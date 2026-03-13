@@ -11,6 +11,7 @@ public class PlaceCategoryClassifier {
 
     private static final Set<String> ALLOWED_GROUP_CODES = Set.of(
         "AT4",
+        "FD6",
         "CE7",
         "CT1"
     );
@@ -38,7 +39,11 @@ public class PlaceCategoryClassifier {
         "고개",
         "테마공원",
         "전시공원",
-        "전망"
+        "전망",
+        "식당",
+        "음식점",
+        "맛집",
+        "레스토랑"
     );
 
     private static final List<String> BLACKLIST_KEYWORDS = List.of(
