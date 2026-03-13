@@ -44,21 +44,33 @@ public class CandidatePlaceCollector {
         "자연"
     );
 
+    private static final List<String> SEA_BLOCKLIST = List.of(
+        "수산",
+        "어시장",
+        "수산시장",
+        "시장",
+        "마트",
+        "회",
+        "횟집",
+        "건어물",
+        "활어"
+    );
+
     private static final Map<CourseTheme, ThemeRule> THEME_RULES = Map.of(
         CourseTheme.NIGHT_VIEW,
-        new ThemeRule(Set.of(), List.of("야경", "전망", "전망대", "루프탑", "야경포인트")),
+        new ThemeRule(Set.of(), List.of("야경", "전망", "전망대", "루프탑", "야경포인트"), List.of()),
         CourseTheme.SEA,
-        new ThemeRule(Set.of(), List.of("해변", "바다", "해안", "항구", "포구", "등대")),
+        new ThemeRule(Set.of(), List.of("해변", "바다", "해안", "항구", "포구", "등대"), SEA_BLOCKLIST),
         CourseTheme.MOUNTAIN,
-        new ThemeRule(Set.of(), List.of("산", "국립공원", "등산", "고개", "산책")),
+        new ThemeRule(Set.of(), List.of("산", "국립공원", "등산", "고개", "산책"), List.of()),
         CourseTheme.CAFE,
-        new ThemeRule(Set.of("CE7"), List.of("카페", "커피", "로스터리")),
+        new ThemeRule(Set.of("CE7"), List.of("카페", "커피", "로스터리"), List.of()),
         CourseTheme.FOOD,
-        new ThemeRule(Set.of(), List.of("시장", "먹자골목", "맛집", "식당", "레스토랑")),
+        new ThemeRule(Set.of(), List.of("시장", "먹자골목", "맛집", "식당", "레스토랑"), List.of()),
         CourseTheme.WINDING,
-        new ThemeRule(Set.of(), List.of("와인딩", "산길", "고개", "드라이브", "굽이")),
+        new ThemeRule(Set.of(), List.of("와인딩", "산길", "고개", "드라이브", "굽이"), List.of()),
         CourseTheme.COASTAL,
-        new ThemeRule(Set.of(), List.of("해안", "해안도로", "해안길", "바다", "바닷길", "등대"))
+        new ThemeRule(Set.of(), List.of("해안", "해안도로", "해안길", "바다", "바닷길", "등대"), SEA_BLOCKLIST)
     );
 
     private final KakaoLocalService kakaoLocalService;
@@ -167,15 +179,20 @@ public class CandidatePlaceCollector {
             }
         }
 
-        if (rule.keywords().isEmpty()) {
-            return true;
-        }
-
         String value = String.join(" ",
             safeLower(candidate.name()),
             safeLower(candidate.categoryName()),
             safeLower(candidate.categoryGroupName())
         );
+
+        if (!rule.blockedKeywords().isEmpty()
+            && rule.blockedKeywords().stream().anyMatch(value::contains)) {
+            return false;
+        }
+
+        if (rule.keywords().isEmpty()) {
+            return true;
+        }
 
         return rule.keywords().stream().anyMatch(value::contains);
     }
@@ -187,6 +204,10 @@ public class CandidatePlaceCollector {
         return value.trim().toLowerCase(Locale.ROOT);
     }
 
-    private record ThemeRule(Set<String> requiredGroupCodes, List<String> keywords) {
+    private record ThemeRule(
+        Set<String> requiredGroupCodes,
+        List<String> keywords,
+        List<String> blockedKeywords
+    ) {
     }
 }
