@@ -5,7 +5,6 @@ import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.course.CourseRecommendationSaveRequest;
 import io.routepickapi.dto.course.CourseRecommendationSaveResponse;
 import io.routepickapi.dto.course.CourseStopRequest;
-import io.routepickapi.dto.course.CourseTheme;
 import io.routepickapi.entity.course.CourseRecommendationSave;
 import io.routepickapi.entity.course.CourseRecommendationStop;
 import io.routepickapi.entity.user.User;
@@ -33,8 +32,6 @@ public class CourseRecommendationSaveService {
             throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "요청값이 비어있습니다.");
         }
 
-        CourseTheme.from(request.theme());
-
         User user = requireActiveUser(userId);
 
         List<CourseRecommendationStop> stops = request.stops().stream()
@@ -45,7 +42,7 @@ public class CourseRecommendationSaveService {
             user,
             request.origin(),
             request.destination(),
-            request.theme(),
+            sanitizeTheme(request.theme()),
             request.routeSummary(),
             request.explanation(),
             stops
@@ -87,6 +84,14 @@ public class CourseRecommendationSaveService {
             stop.y(),
             stop.category()
         );
+    }
+
+    private String sanitizeTheme(String theme) {
+        if (theme == null || theme.isBlank()) {
+            return "서비스 추천";
+        }
+        String trimmed = theme.trim();
+        return trimmed.length() > 20 ? trimmed.substring(0, 20) : trimmed;
     }
 
     private User requireActiveUser(Long userId) {

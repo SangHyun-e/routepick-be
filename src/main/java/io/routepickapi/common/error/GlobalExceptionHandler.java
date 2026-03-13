@@ -12,6 +12,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /*
  * 컨트롤러 전역 예외를 JSON 바디로 통일
@@ -141,6 +142,20 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.status(status).body(body);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleNoResource(NoResourceFoundException e,
+        HttpServletRequest req) {
+        log.warn("Resource not found: path={}, msg={}", req.getRequestURI(), e.getMessage());
+        ApiErrorResponse body = ApiErrorResponse.of(
+            ErrorType.COMMON_NOT_FOUND,
+            null,
+            req.getRequestURI(),
+            requestId(req),
+            null
+        );
+        return ResponseEntity.status(ErrorType.COMMON_NOT_FOUND.httpStatus).body(body);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
