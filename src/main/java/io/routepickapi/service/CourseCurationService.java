@@ -44,8 +44,7 @@ public class CourseCurationService {
 
         String prompt = buildPrompt(request, filteredCandidates, extraStops);
         CourseCurationResponse response = cruiserLlmClient.requestCuration(prompt)
-            .orElseThrow(() -> new CustomException(ErrorType.COMMON_INTERNAL,
-                "AI 추천 더보기를 생성하지 못했습니다."));
+            .orElseGet(() -> fallbackResponse(request, filteredCandidates, extraStops));
 
         List<CourseStopResponse> extraStopResults = resolveExtraStops(
             response.extraStops(),
@@ -101,6 +100,8 @@ public class CourseCurationService {
             - 감성적 가치 전달과 실용적 팁 포함
             - 실시간 데이터가 없으므로 추정/일반적 표현을 사용
             - 추가 추천 후보가 없으면 extra_stops는 빈 배열로 응답
+            - 아래 후보 목록에서만 선택하고 이름/주소를 그대로 복사
+            - 절대 새로운 장소를 창작하지 말 것
             - JSON 외 텍스트는 출력하지 말 것
 
             Output Format (JSON):
@@ -227,11 +228,26 @@ public class CourseCurationService {
                 LinkedHashMap::new
             ));
 
+        Map<String, CourseStopResponse> candidateNameMap = candidates.stream()
+            .filter(Objects::nonNull)
+            .collect(Collectors.toMap(
+                stop -> normalize(stop.name()),
+                stop -> stop,
+                (existing, ignored) -> existing,
+                LinkedHashMap::new
+            ));
+
         List<CourseStopResponse> resolved = fromAi == null
             ? List.of()
             : fromAi.stream()
                 .filter(Objects::nonNull)
-                .map(stop -> candidateMap.get(stopKey(stop.name(), stop.address())))
+                .map(stop -> {
+                    CourseStopResponse matched = candidateMap.get(stopKey(stop.name(), stop.address()));
+                    if (matched != null) {
+                        return matched;
+                    }
+                    return candidateNameMap.get(normalize(stop.name()));
+                })
                 .filter(Objects::nonNull)
                 .distinct()
                 .limit(extraStops)
@@ -249,5 +265,43 @@ public class CourseCurationService {
     private String stopKey(String name, String address) {
         String merged = String.format("%s|%s", name == null ? "" : name, address == null ? "" : address);
         return merged.toLowerCase(Locale.ROOT).replace(" ", "");
+    }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.toLowerCase(Locale.ROOT).replace(" ", "");
+    }
+
+    private CourseCurationResponse fallbackResponse(
+        CourseCurationRequest request,
+        List<CourseStopResponse> candidates,
+        int extraStops
+    ) {
+        List<CourseStopResponse> extras = candidates == null
+            ? List.of()
+            : candidates.stream().limit(extraStops).toList();
+
+        CourseCurationResponse.RouteDetails routeDetails = new CourseCurationResponse.RouteDetails(
+            request.origin(),
+            request.stops().isEmpty() ? "" : request.stops().getFirst().name(),
+            request.destination()
+        );
+
+        CourseCurationResponse.DriveInfo driveInfo = new CourseCurationResponse.DriveInfo(
+            "",
+            "",
+            ""
+        );
+
+        return new CourseCurationResponse(
+            "드라이브 코스 추천",
+            request.theme() + " 테마 기반으로 추천했습니다.",
+            routeDetails,
+            driveInfo,
+            List.of(),
+            extras
+        );
     }
 }
