@@ -13,7 +13,7 @@ public record CourseRecommendationRequest(
     String destination,
     @NotBlank @Schema(description = "테마", allowableValues = {"야경", "바다", "산", "카페", "맛집", "와인딩", "해안길"})
     String theme,
-    @Min(1) @Max(3) @Schema(description = "추천 정차 수", defaultValue = "3")
+    @Min(2) @Max(4) @Schema(description = "추천 정차 수", defaultValue = "3")
     Integer maxStops,
     @Min(1) @Max(50) @Schema(description = "최대 우회 거리(km)", defaultValue = "10")
     Integer maxDetourKm
