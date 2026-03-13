@@ -4,6 +4,8 @@ import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.course.CourseRecommendationRequest;
 import io.routepickapi.dto.course.CourseRecommendationResponse;
+import io.routepickapi.dto.course.CourseRecommendationConditionStatus;
+import io.routepickapi.dto.course.CourseRecommendationRelaxation;
 import io.routepickapi.dto.course.CourseStopResponse;
 import io.routepickapi.dto.course.DriveMood;
 import io.routepickapi.dto.course.DriveRouteStyle;
@@ -20,7 +22,9 @@ import io.routepickapi.service.recommendation.CourseScoreCalculator;
 import io.routepickapi.service.recommendation.FinalRecommendationValidator;
 import io.routepickapi.service.recommendation.PlaceDeduplicator;
 import io.routepickapi.service.recommendation.RecommendationFallbackPolicy;
+import io.routepickapi.service.recommendation.CandidateSearchOption;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -36,6 +40,10 @@ public class CourseRecommendationService {
     private static final int DEFAULT_MAX_STOPS = 3;
     private static final int MIN_STOPS = 2;
     private static final int MAX_STOPS = 4;
+    private static final int MIN_COURSE_COUNT = 3;
+    private static final int EXPANDED_SEARCH_RADIUS_METERS = 12000;
+    private static final String RELAXATION_MESSAGE =
+        "선택한 조건에 맞는 코스가 부족해 일부 조건을 완화했습니다.";
 
     private final KakaoLocalService kakaoLocalService;
     private final CandidatePlaceCollector candidatePlaceCollector;
@@ -62,57 +70,29 @@ public class CourseRecommendationService {
         GeoPoint origin = resolvePoint(request.origin());
         GeoPoint destination = resolvePoint(request.destination());
 
-        List<CandidatePlace> candidates = candidatePlaceCollector.collectCandidates(origin, destination, preference);
-        List<CandidatePlace> deduplicated = placeDeduplicator.deduplicate(candidates);
-
-        List<CourseCandidate> courses = courseCandidateBuilder.buildCourses(
-            origin,
-            destination,
-            deduplicated,
-            MIN_STOPS,
-            maxStops
-        );
-
-        List<CourseCandidate> scored = courseScoreCalculator.scoreCourses(
-            courses,
-            origin,
-            destination,
+        RecommendationOutcome outcome = recommendWithRelaxation(
+            request,
             preference,
-            maxStops
-        );
-        List<CourseCandidate> validated = finalRecommendationValidator.validateCourses(
-            scored,
             origin,
             destination,
+            maxStops,
             maxDetourKm
         );
 
-        if (validated.isEmpty()) {
-            List<CourseCandidate> fallback = recommendationFallbackPolicy.fallback(
-                deduplicated,
-                origin,
-                destination,
-                MIN_STOPS
-            );
-            validated = courseScoreCalculator.scoreCourses(
-                fallback,
-                origin,
-                destination,
-                preference,
-                maxStops
-            );
-        }
-
-        CourseCandidate bestCourse = selectBestCourse(validated, maxStops);
+        CourseCandidate bestCourse = outcome.bestCourse();
         List<CourseStopResponse> stops = bestCourse == null
             ? List.of()
             : bestCourse.stops().stream().map(this::toStopResponse).toList();
 
         String routeSummary = buildRouteSummary(request.origin(), request.destination(), stops);
         String explanation = buildExplanation(preference, stops);
+        CourseRecommendationRelaxation relaxation = buildRelaxationSummary(
+            request,
+            outcome.relaxationState()
+        );
 
         log.info("추천 코스 생성 완료 - stops={}", stops.size());
-        return new CourseRecommendationResponse(stops, routeSummary, explanation);
+        return new CourseRecommendationResponse(stops, routeSummary, explanation, relaxation);
     }
 
     public List<CourseStopResponse> recommendCandidates(
@@ -142,6 +122,428 @@ public class CourseRecommendationService {
             .limit(limit)
             .map(this::toStopResponse)
             .toList();
+    }
+
+    private RecommendationOutcome recommendWithRelaxation(
+        CourseRecommendationRequest request,
+        DrivePreference preference,
+        GeoPoint origin,
+        GeoPoint destination,
+        int maxStops,
+        double maxDetourKm
+    ) {
+        ConditionRequirement requirement = buildConditionRequirement(request, preference);
+        CandidateSearchOption searchOption = CandidateSearchOption.defaultOption()
+            .withStopTypeFilter(requirement.requireStopType());
+        RecommendationRun run = buildRecommendationRun(
+            origin,
+            destination,
+            preference,
+            maxStops,
+            maxDetourKm,
+            searchOption
+        );
+
+        RelaxationState relaxationState = new RelaxationState(
+            false,
+            false,
+            false,
+            false,
+            searchOption.searchRadiusMeters()
+        );
+
+        List<CourseCandidate> filtered = filterByConditions(
+            run.courses(),
+            origin,
+            destination,
+            preference,
+            requirement
+        );
+
+        if (filtered.size() < MIN_COURSE_COUNT && requirement.requireRouteStyle()) {
+            requirement = requirement.withoutRouteStyle();
+            relaxationState = relaxationState.withRouteStyleRelaxed();
+            filtered = filterByConditions(run.courses(), origin, destination, preference, requirement);
+        }
+
+        if (filtered.size() < MIN_COURSE_COUNT && requirement.requireStopType()) {
+            requirement = requirement.withoutStopType();
+            relaxationState = relaxationState.withStopTypeRelaxed();
+            searchOption = searchOption.withStopTypeFilter(false);
+            run = buildRecommendationRun(
+                origin,
+                destination,
+                preference,
+                maxStops,
+                maxDetourKm,
+                searchOption
+            );
+            filtered = filterByConditions(run.courses(), origin, destination, preference, requirement);
+        }
+
+        if (filtered.size() < MIN_COURSE_COUNT && requirement.requireMood()) {
+            requirement = requirement.withoutMood();
+            relaxationState = relaxationState.withMoodRelaxed();
+            filtered = filterByConditions(run.courses(), origin, destination, preference, requirement);
+        }
+
+        if (filtered.size() < MIN_COURSE_COUNT) {
+            relaxationState = relaxationState.withRadiusRelaxed(EXPANDED_SEARCH_RADIUS_METERS);
+            searchOption = searchOption.withSearchRadiusMeters(EXPANDED_SEARCH_RADIUS_METERS);
+            run = buildRecommendationRun(
+                origin,
+                destination,
+                preference,
+                maxStops,
+                maxDetourKm,
+                searchOption
+            );
+            filtered = filterByConditions(run.courses(), origin, destination, preference, requirement);
+        }
+
+        if (filtered.isEmpty()) {
+            filtered = applyFallback(origin, destination, run.candidates(), preference, maxStops);
+        }
+
+        CourseCandidate bestCourse = selectBestCourse(filtered, maxStops);
+        return new RecommendationOutcome(bestCourse, relaxationState);
+    }
+
+    private RecommendationRun buildRecommendationRun(
+        GeoPoint origin,
+        GeoPoint destination,
+        DrivePreference preference,
+        int maxStops,
+        double maxDetourKm,
+        CandidateSearchOption searchOption
+    ) {
+        List<CandidatePlace> candidates = candidatePlaceCollector.collectCandidates(
+            origin,
+            destination,
+            preference,
+            searchOption
+        );
+        List<CandidatePlace> deduplicated = placeDeduplicator.deduplicate(candidates);
+        List<CourseCandidate> courses = courseCandidateBuilder.buildCourses(
+            origin,
+            destination,
+            deduplicated,
+            MIN_STOPS,
+            maxStops
+        );
+
+        List<CourseCandidate> scored = courseScoreCalculator.scoreCourses(
+            courses,
+            origin,
+            destination,
+            preference,
+            maxStops
+        );
+        List<CourseCandidate> validated = finalRecommendationValidator.validateCourses(
+            scored,
+            origin,
+            destination,
+            maxDetourKm
+        );
+        return new RecommendationRun(deduplicated, validated);
+    }
+
+    private List<CourseCandidate> filterByConditions(
+        List<CourseCandidate> courses,
+        GeoPoint origin,
+        GeoPoint destination,
+        DrivePreference preference,
+        ConditionRequirement requirement
+    ) {
+        if (courses == null || courses.isEmpty()) {
+            return List.of();
+        }
+
+        return courses.stream()
+            .filter(course -> !requirement.requireMood()
+                || matchesMoods(course, preference.moods()))
+            .filter(course -> !requirement.requireStopType()
+                || matchesStopTypes(course, preference.stopTypes()))
+            .filter(course -> !requirement.requireRouteStyle()
+                || matchesRouteStyles(course, origin, destination, preference.routeStyles()))
+            .toList();
+    }
+
+    private List<CourseCandidate> applyFallback(
+        GeoPoint origin,
+        GeoPoint destination,
+        List<CandidatePlace> candidates,
+        DrivePreference preference,
+        int maxStops
+    ) {
+        List<CandidatePlace> baseCandidates = candidates;
+        if (baseCandidates == null || baseCandidates.isEmpty()) {
+            CandidateSearchOption fallbackOption = CandidateSearchOption.defaultOption()
+                .withSearchRadiusMeters(EXPANDED_SEARCH_RADIUS_METERS)
+                .withStopTypeFilter(false);
+            baseCandidates = candidatePlaceCollector.collectCandidates(
+                origin,
+                destination,
+                preference,
+                fallbackOption
+            );
+            baseCandidates = placeDeduplicator.deduplicate(baseCandidates);
+        }
+
+        List<CourseCandidate> fallback = recommendationFallbackPolicy.fallback(
+            baseCandidates,
+            origin,
+            destination,
+            MIN_STOPS
+        );
+        return courseScoreCalculator.scoreCourses(
+            fallback,
+            origin,
+            destination,
+            preference,
+            maxStops
+        );
+    }
+
+    private ConditionRequirement buildConditionRequirement(
+        CourseRecommendationRequest request,
+        DrivePreference preference
+    ) {
+        if (preference.autoRecommend()) {
+            return new ConditionRequirement(false, false, false);
+        }
+
+        boolean requireMood = request.moods() != null && !request.moods().isEmpty();
+        boolean requireStopType = request.stopTypes() != null && !request.stopTypes().isEmpty();
+        boolean requireRouteStyle = request.routeStyles() != null && !request.routeStyles().isEmpty()
+            && preference.routeStyles().stream().anyMatch(style -> style != DriveRouteStyle.NORMAL);
+        return new ConditionRequirement(requireRouteStyle, requireStopType, requireMood);
+    }
+
+    private CourseRecommendationRelaxation buildRelaxationSummary(
+        CourseRecommendationRequest request,
+        RelaxationState relaxationState
+    ) {
+        List<CourseRecommendationConditionStatus> conditions = new ArrayList<>();
+
+        List<DriveMood> moods = DriveMood.fromLabels(request.moods());
+        if (!moods.isEmpty()) {
+            conditions.add(new CourseRecommendationConditionStatus(
+                "분위기",
+                joinLabels(moods.stream().map(DriveMood::label).toList()),
+                relaxationState.moodRelaxed()
+            ));
+        }
+
+        List<DriveStopType> stopTypes = DriveStopType.fromLabels(request.stopTypes());
+        if (!stopTypes.isEmpty()) {
+            conditions.add(new CourseRecommendationConditionStatus(
+                "들를 곳",
+                joinLabels(stopTypes.stream().map(DriveStopType::label).toList()),
+                relaxationState.stopTypeRelaxed()
+            ));
+        }
+
+        List<DriveRouteStyle> routeStyles = DriveRouteStyle.fromLabels(request.routeStyles());
+        if (!routeStyles.isEmpty()) {
+            conditions.add(new CourseRecommendationConditionStatus(
+                "길 스타일",
+                joinLabels(routeStyles.stream().map(DriveRouteStyle::label).toList()),
+                relaxationState.routeStyleRelaxed()
+            ));
+        }
+
+        boolean relaxed = relaxationState.relaxed();
+        String message = relaxed ? RELAXATION_MESSAGE : "";
+        return new CourseRecommendationRelaxation(
+            relaxed,
+            message,
+            conditions,
+            relaxationState.searchRadiusMeters(),
+            relaxationState.radiusRelaxed()
+        );
+    }
+
+    private String joinLabels(List<String> labels) {
+        return labels.stream()
+            .filter(Objects::nonNull)
+            .filter(value -> !value.isBlank())
+            .distinct()
+            .reduce((first, second) -> first + ", " + second)
+            .orElse("");
+    }
+
+    private boolean matchesMoods(CourseCandidate course, List<DriveMood> moods) {
+        if (moods == null || moods.isEmpty()) {
+            return true;
+        }
+
+        List<String> keywords = moods.stream()
+            .flatMap(mood -> mood.keywords().stream())
+            .toList();
+        return course.stops().stream().anyMatch(stop -> containsAny(stop, keywords));
+    }
+
+    private boolean matchesStopTypes(CourseCandidate course, List<DriveStopType> stopTypes) {
+        if (stopTypes == null || stopTypes.isEmpty()) {
+            return true;
+        }
+        return course.stops().stream().anyMatch(stop -> matchesStopType(stop, stopTypes));
+    }
+
+    private boolean matchesStopType(CandidatePlace candidate, List<DriveStopType> stopTypes) {
+        for (DriveStopType stopType : stopTypes) {
+            if (matchesStopType(candidate, stopType)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean matchesStopType(CandidatePlace candidate, DriveStopType stopType) {
+        if (stopType == null) {
+            return false;
+        }
+
+        String value = concatPlace(candidate);
+        if (!stopType.requiredGroupCodes().isEmpty()) {
+            String groupCode = candidate.categoryGroupCode();
+            if (groupCode == null || !stopType.requiredGroupCodes().contains(groupCode)) {
+                return false;
+            }
+        }
+
+        if (!stopType.blockedKeywords().isEmpty()
+            && stopType.blockedKeywords().stream().anyMatch(value::contains)) {
+            return false;
+        }
+
+        if (stopType.keywords().isEmpty()) {
+            return true;
+        }
+
+        return stopType.keywords().stream().anyMatch(value::contains);
+    }
+
+    private boolean matchesRouteStyles(
+        CourseCandidate course,
+        GeoPoint origin,
+        GeoPoint destination,
+        List<DriveRouteStyle> routeStyles
+    ) {
+        if (routeStyles == null || routeStyles.isEmpty()) {
+            return true;
+        }
+
+        List<DriveRouteStyle> activeStyles = routeStyles.stream()
+            .filter(style -> style != DriveRouteStyle.NORMAL)
+            .toList();
+        if (activeStyles.isEmpty()) {
+            return true;
+        }
+
+        for (DriveRouteStyle style : activeStyles) {
+            if (style == DriveRouteStyle.WINDING) {
+                if (calculateWindingScore(course, origin, destination) >= 0.35) {
+                    return true;
+                }
+                continue;
+            }
+
+            boolean blocked = style.blockedKeywords().stream()
+                .anyMatch(keyword -> course.stops().stream()
+                    .map(this::concatPlace)
+                    .anyMatch(value -> value.contains(keyword)));
+            if (blocked) {
+                continue;
+            }
+
+            boolean matched = course.stops().stream()
+                .anyMatch(stop -> containsAny(stop, style.keywords()));
+            if (matched) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean containsAny(CandidatePlace candidate, List<String> keywords) {
+        if (keywords == null || keywords.isEmpty()) {
+            return false;
+        }
+        String value = concatPlace(candidate);
+        return keywords.stream().anyMatch(value::contains);
+    }
+
+    private String concatPlace(CandidatePlace candidate) {
+        return String.join(" ",
+            safeLower(candidate.name()),
+            safeLower(candidate.categoryName()),
+            safeLower(candidate.categoryGroupName())
+        );
+    }
+
+    private String safeLower(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private double calculateWindingScore(
+        CourseCandidate course,
+        GeoPoint origin,
+        GeoPoint destination
+    ) {
+        List<GeoPoint> points = new ArrayList<>();
+        points.add(origin);
+        for (CandidatePlace stop : course.stops()) {
+            points.add(new GeoPoint(stop.x(), stop.y()));
+        }
+        points.add(destination);
+
+        if (points.size() < 3) {
+            return 0.0;
+        }
+
+        double totalAngle = 0.0;
+        int angleCount = 0;
+        for (int index = 1; index < points.size() - 1; index++) {
+            GeoPoint previous = points.get(index - 1);
+            GeoPoint current = points.get(index);
+            GeoPoint next = points.get(index + 1);
+            double angle = calculateTurnAngle(previous, current, next);
+            if (!Double.isNaN(angle)) {
+                totalAngle += angle;
+                angleCount++;
+            }
+        }
+
+        if (angleCount == 0) {
+            return 0.0;
+        }
+
+        double averageAngle = totalAngle / angleCount;
+        return Math.min(1.0, averageAngle / Math.PI);
+    }
+
+    private double calculateTurnAngle(GeoPoint previous, GeoPoint current, GeoPoint next) {
+        double vectorOneX = current.x() - previous.x();
+        double vectorOneY = current.y() - previous.y();
+        double vectorTwoX = next.x() - current.x();
+        double vectorTwoY = next.y() - current.y();
+
+        double magnitudeOne = Math.hypot(vectorOneX, vectorOneY);
+        double magnitudeTwo = Math.hypot(vectorTwoX, vectorTwoY);
+        if (magnitudeOne == 0 || magnitudeTwo == 0) {
+            return Double.NaN;
+        }
+
+        double cosine = (vectorOneX * vectorTwoX + vectorOneY * vectorTwoY)
+            / (magnitudeOne * magnitudeTwo);
+        double normalized = Math.max(-1.0, Math.min(1.0, cosine));
+        return Math.acos(normalized);
     }
 
     private int sanitizeMaxStops(Integer maxStops) {
@@ -334,5 +736,63 @@ public class CourseRecommendationService {
             summary.append("길 스타일: ").append(routes);
         }
         return summary.toString();
+    }
+
+    private record RecommendationOutcome(
+        CourseCandidate bestCourse,
+        RelaxationState relaxationState
+    ) {
+    }
+
+    private record RecommendationRun(
+        List<CandidatePlace> candidates,
+        List<CourseCandidate> courses
+    ) {
+    }
+
+    private record ConditionRequirement(
+        boolean requireRouteStyle,
+        boolean requireStopType,
+        boolean requireMood
+    ) {
+        ConditionRequirement withoutRouteStyle() {
+            return new ConditionRequirement(false, requireStopType, requireMood);
+        }
+
+        ConditionRequirement withoutStopType() {
+            return new ConditionRequirement(requireRouteStyle, false, requireMood);
+        }
+
+        ConditionRequirement withoutMood() {
+            return new ConditionRequirement(requireRouteStyle, requireStopType, false);
+        }
+    }
+
+    private record RelaxationState(
+        boolean routeStyleRelaxed,
+        boolean stopTypeRelaxed,
+        boolean moodRelaxed,
+        boolean radiusRelaxed,
+        int searchRadiusMeters
+    ) {
+        RelaxationState withRouteStyleRelaxed() {
+            return new RelaxationState(true, stopTypeRelaxed, moodRelaxed, radiusRelaxed, searchRadiusMeters);
+        }
+
+        RelaxationState withStopTypeRelaxed() {
+            return new RelaxationState(routeStyleRelaxed, true, moodRelaxed, radiusRelaxed, searchRadiusMeters);
+        }
+
+        RelaxationState withMoodRelaxed() {
+            return new RelaxationState(routeStyleRelaxed, stopTypeRelaxed, true, radiusRelaxed, searchRadiusMeters);
+        }
+
+        RelaxationState withRadiusRelaxed(int radiusMeters) {
+            return new RelaxationState(routeStyleRelaxed, stopTypeRelaxed, moodRelaxed, true, radiusMeters);
+        }
+
+        boolean relaxed() {
+            return routeStyleRelaxed || stopTypeRelaxed || moodRelaxed || radiusRelaxed;
+        }
     }
 }

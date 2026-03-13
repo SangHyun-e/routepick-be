@@ -7,6 +7,7 @@ import java.util.List;
 public record CourseRecommendationResponse(
     @Schema(description = "추천 정차 장소 목록") List<CourseStopResponse> stops,
     @Schema(description = "경로 요약") String routeSummary,
-    @Schema(description = "추천 설명") String explanation
+    @Schema(description = "추천 설명") String explanation,
+    @Schema(description = "조건 완화 정보") CourseRecommendationRelaxation relaxation
 ) {
 }
