@@ -16,13 +16,22 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class RouteMetricsService {
 
-    private static final double MIN_CORRIDOR_RADIUS_KM = 2.0;
-    private static final double CORRIDOR_RATIO = 0.35;
+    private static final double MIN_CORRIDOR_RADIUS_KM = 6.0;
+    private static final double CORRIDOR_RATIO = 0.4;
 
     private final RoutingClient routingClient;
     private final RecommendationCacheService cacheService;
 
     public RouteMetrics buildMetrics(GeoPoint origin, GeoPoint destination, double maxDetourKm) {
+        return buildMetrics(origin, destination, maxDetourKm, null);
+    }
+
+    public RouteMetrics buildMetrics(
+        GeoPoint origin,
+        GeoPoint destination,
+        double maxDetourKm,
+        Double maxDistanceKm
+    ) {
         RouteLegMetrics baseMetrics = calculateMetrics(origin, destination, List.of());
         double baseDistanceKm = baseMetrics.distanceKm() > 0
             ? baseMetrics.distanceKm()
@@ -31,15 +40,21 @@ public class RouteMetricsService {
             ? baseMetrics.durationMinutes()
             : GeoUtils.estimateMinutes(baseDistanceKm);
         double safeDetourKm = Math.max(1.0, maxDetourKm);
+        double effectiveMaxDistanceKm = maxDistanceKm != null && maxDistanceKm > 0
+            ? Math.max(baseDistanceKm, maxDistanceKm)
+            : baseDistanceKm;
+        double extraDistanceKm = Math.max(0.0, effectiveMaxDistanceKm - baseDistanceKm);
+        double detourCapKm = Math.max(safeDetourKm, extraDistanceKm * 0.6);
+        double corridorBaseKm = baseDistanceKm * CORRIDOR_RATIO + extraDistanceKm * 0.25;
         double corridorRadiusKm = Math.max(
             MIN_CORRIDOR_RADIUS_KM,
-            Math.min(safeDetourKm, baseDistanceKm * CORRIDOR_RATIO)
+            Math.min(detourCapKm, corridorBaseKm)
         );
-        double maxDelayMinutes = Math.max(10.0, GeoUtils.estimateMinutes(safeDetourKm));
+        double maxDelayMinutes = Math.max(10.0, GeoUtils.estimateMinutes(detourCapKm));
         return new RouteMetrics(
             baseDistanceKm,
             baseDurationMinutes,
-            safeDetourKm,
+            detourCapKm,
             maxDelayMinutes,
             corridorRadiusKm
         );

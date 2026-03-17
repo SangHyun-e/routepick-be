@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class PoiCollectorService {
 
-    private static final int MIDPOINT_COUNT = 1;
+    private static final int MIDPOINT_COUNT = 3;
     private static final int SEARCH_PAGE = 1;
     private static final int SEARCH_SIZE = 15;
     private static final int TOUR_PAGE = 1;

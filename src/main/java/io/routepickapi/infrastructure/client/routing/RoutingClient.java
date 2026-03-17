@@ -70,6 +70,14 @@ public class RoutingClient {
     }
 
     public DirectionsResponse fetchDirections(List<Coordinate> coordinates) {
+        DirectionsResult result = fetchDirectionsResult(coordinates);
+        if (result.response() != null) {
+            return result.response();
+        }
+        return new DirectionsResponse(List.of());
+    }
+
+    public DirectionsResult fetchDirectionsResult(List<Coordinate> coordinates) {
         validateApiKey();
 
         if (coordinates == null || coordinates.size() < 2) {
@@ -83,22 +91,23 @@ public class RoutingClient {
         );
 
         try {
-            return restClient.post()
+            DirectionsResponse response = restClient.post()
                 .uri("/v2/directions/" + profile)
                 .header(HttpHeaders.AUTHORIZATION, apiKey)
                 .body(request)
                 .retrieve()
                 .body(DirectionsResponse.class);
+            return new DirectionsResult(response, null);
         } catch (RestClientResponseException exception) {
             log.warn(
                 "Routing API directions failed: status={}, body={}",
                 exception.getStatusCode(),
                 exception.getResponseBodyAsString()
             );
-            return new DirectionsResponse(List.of());
+            return new DirectionsResult(null, exception.getStatusCode().value());
         } catch (RestClientException exception) {
             log.warn("Routing API directions failed");
-            return new DirectionsResponse(List.of());
+            return new DirectionsResult(null, null);
         }
     }
 
@@ -106,6 +115,16 @@ public class RoutingClient {
         if (apiKey == null || apiKey.isBlank()) {
             log.warn("Routing API key missing");
             throw new CustomException(ErrorType.COMMON_INTERNAL, "Routing API 키가 필요합니다.");
+        }
+    }
+
+    public record DirectionsResult(DirectionsResponse response, Integer statusCode) {
+        public boolean isRateLimited() {
+            return statusCode != null && statusCode == 429;
+        }
+
+        public boolean isNotFound() {
+            return statusCode != null && statusCode == 404;
         }
     }
 
