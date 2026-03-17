@@ -35,15 +35,122 @@ public class CourseGenerationService {
         List<Poi> candidates = buildDiverseCandidates(pois);
 
         List<CoursePlan> plans = new ArrayList<>();
-        for (int stopCount = MIN_STOPS; stopCount <= safeMaxStops; stopCount++) {
-            buildCombinations(candidates, stopCount, 0, new ArrayList<>(), plans, safeLimit);
+        Map<Integer, Integer> generatedByStops = new LinkedHashMap<>();
+        Map<String, Integer> firstStopCounts = new LinkedHashMap<>();
+
+        for (int stopCount = safeMaxStops; stopCount >= MIN_STOPS; stopCount--) {
+            int before = plans.size();
+            buildDiverseCombinations(candidates, stopCount, plans, safeLimit, firstStopCounts);
+            int added = plans.size() - before;
+            generatedByStops.put(stopCount, added);
             if (plans.size() >= safeLimit) {
                 break;
             }
         }
 
-        log.info("코스 조합 생성 완료 - count={}", plans.size());
+        int uniqueFirstStops = (int) plans.stream()
+            .map(plan -> firstStopKey(plan.stops().getFirst()))
+            .filter(key -> key != null && !key.isBlank())
+            .distinct()
+            .count();
+        log.info(
+            "코스 조합 생성 완료 - count={}, uniqueFirstStops={}, stop2={}, stop3={}, requestedMaxStops={}",
+            plans.size(),
+            uniqueFirstStops,
+            generatedByStops.getOrDefault(2, 0),
+            generatedByStops.getOrDefault(3, 0),
+            safeMaxStops
+        );
         return plans;
+    }
+
+    private void buildDiverseCombinations(
+        List<Poi> candidates,
+        int targetSize,
+        List<CoursePlan> results,
+        int limit,
+        Map<String, Integer> firstStopCounts
+    ) {
+        if (results.size() >= limit) {
+            return;
+        }
+
+        List<Poi> firstStops = buildFirstStopCandidates(candidates);
+        int remainingLimit = Math.max(1, limit - results.size());
+        int perFirstStopLimit = Math.max(1, remainingLimit / Math.max(1, firstStops.size()));
+
+        for (Poi firstStop : firstStops) {
+            if (results.size() >= limit) {
+                return;
+            }
+            String firstKey = firstStopKey(firstStop);
+            List<Poi> remaining = candidates.stream()
+                .filter(poi -> !firstKey.equals(firstStopKey(poi)))
+                .toList();
+            List<Poi> current = new ArrayList<>();
+            current.add(firstStop);
+            buildCombinationsWithCap(
+                remaining,
+                targetSize,
+                0,
+                current,
+                results,
+                limit,
+                firstKey,
+                firstStopCounts,
+                perFirstStopLimit
+            );
+        }
+
+        if (results.size() < limit) {
+            buildCombinations(candidates, targetSize, 0, new ArrayList<>(), results, limit);
+        }
+    }
+
+    private void buildCombinationsWithCap(
+        List<Poi> candidates,
+        int targetSize,
+        int startIndex,
+        List<Poi> current,
+        List<CoursePlan> results,
+        int limit,
+        String firstStopKey,
+        Map<String, Integer> firstStopCounts,
+        int perFirstStopLimit
+    ) {
+        if (results.size() >= limit) {
+            return;
+        }
+        int currentCount = firstStopCounts.getOrDefault(firstStopKey, 0);
+        if (currentCount >= perFirstStopLimit) {
+            return;
+        }
+        if (current.size() == targetSize) {
+            if (!isTooSimilar(current, results)) {
+                results.add(new CoursePlan(List.copyOf(current)));
+                firstStopCounts.put(firstStopKey, currentCount + 1);
+            }
+            return;
+        }
+
+        for (int index = startIndex; index < candidates.size(); index++) {
+            if (results.size() >= limit) {
+                return;
+            }
+            current.add(candidates.get(index));
+            buildCombinationsWithCap(
+                candidates,
+                targetSize,
+                index + 1,
+                current,
+                results,
+                limit,
+                firstStopKey,
+                firstStopCounts,
+                perFirstStopLimit
+            );
+            current.remove(current.size() - 1);
+        }
     }
 
     private void buildCombinations(
@@ -118,6 +225,37 @@ public class CourseGenerationService {
             }
         }
         return "unknown";
+    }
+
+    private List<Poi> buildFirstStopCandidates(List<Poi> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
+        List<Poi> unique = new ArrayList<>();
+        Set<String> seen = new java.util.LinkedHashSet<>();
+        for (Poi poi : candidates) {
+            String key = firstStopKey(poi);
+            if (key.isBlank() || !seen.add(key)) {
+                continue;
+            }
+            unique.add(poi);
+        }
+        return unique;
+    }
+
+    private String firstStopKey(Poi poi) {
+        if (poi == null) {
+            return "";
+        }
+        String source = poi.source() == null ? "" : poi.source().trim().toLowerCase(Locale.ROOT);
+        String externalId = poi.externalId() == null ? "" : poi.externalId().trim();
+        if (!externalId.isBlank()) {
+            return source + ":" + externalId;
+        }
+        String name = poi.name() == null ? "" : poi.name().trim().toLowerCase(Locale.ROOT);
+        long latKey = Math.round(poi.lat() * 10000);
+        long lngKey = Math.round(poi.lng() * 10000);
+        return name + ":" + latKey + ":" + lngKey;
     }
 
     private boolean isTooSimilar(List<Poi> candidate, List<CoursePlan> existing) {

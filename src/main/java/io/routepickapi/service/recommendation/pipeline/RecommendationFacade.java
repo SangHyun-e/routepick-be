@@ -40,7 +40,6 @@ public class RecommendationFacade {
     private static final int DEFAULT_COURSE_LIMIT = 3;
     private static final int DEFAULT_ROUTING_CANDIDATE_CAP = 12;
     private static final double MAX_ROUTE_DEVIATION_KM = 3.0;
-    private static final double MAX_DETOUR_MINUTES = 15.0;
     private static final double COURSE_SIMILARITY_THRESHOLD = 0.75;
     private static final double COURSE_NAME_SIMILARITY_THRESHOLD = 0.7;
     private static final List<String> KAKAO_CAFE_KEYWORDS = List.of("카페", "뷰카페");
@@ -119,12 +118,18 @@ public class RecommendationFacade {
         boolean weatherAware = command.weatherAware() == null || command.weatherAware();
 
         int radius = resolveRadius(command.durationMinutes());
+        double maxDistanceKm = resolveMaxDistanceKm(command.durationMinutes());
         int maxStops = sanitizeMaxStops(command.maxStops());
         DriveTheme themeType = DriveTheme.fromRaw(command.theme());
         String theme = driveThemePolicy.resolve(command.theme());
         GeoPoint originPoint = new GeoPoint(command.originLng(), command.originLat());
         GeoPoint destinationPoint = new GeoPoint(command.destinationLng(), command.destinationLat());
-        RouteMetrics routeMetrics = routeMetricsService.buildMetrics(originPoint, destinationPoint, MAX_ROUTE_DEVIATION_KM);
+        RouteMetrics routeMetrics = routeMetricsService.buildMetrics(
+            originPoint,
+            destinationPoint,
+            MAX_ROUTE_DEVIATION_KM,
+            maxDistanceKm
+        );
         RouteCorridor corridor = new RouteCorridor(originPoint, destinationPoint, routeMetrics);
         io.routepickapi.service.recommendation.RoutePath routePath = routePathService.resolvePath(
             originPoint,
@@ -150,11 +155,13 @@ public class RecommendationFacade {
             weatherAware
         );
         log.info(
-            "Route corridor metrics - requestId={}, baseDistanceKm={}, baseDurationMinutes={}, corridorRadiusKm={}",
+            "Route corridor metrics - requestId={}, baseDistanceKm={}, baseDurationMinutes={}, maxDistanceKm={}, corridorRadiusKm={}, maxDetourKm={}",
             requestId,
             routeMetrics.baseDistanceKm(),
             routeMetrics.baseDurationMinutes(),
-            routeMetrics.corridorRadiusKm()
+            maxDistanceKm,
+            routeMetrics.corridorRadiusKm(),
+            routeMetrics.maxDetourKm()
         );
 
         List<Poi> curatedPois = driveSpotService.collectActiveSpots();
@@ -164,7 +171,13 @@ public class RecommendationFacade {
             .toList();
         log.info("Curated theme filter - requestId={}, before={}, after={}",
             requestId, curatedTotal, curatedThemeFiltered.size());
-        List<Poi> curatedCorridor = filterByCorridor(curatedThemeFiltered, corridor, routeMetrics, requestId);
+        List<Poi> curatedCorridor = filterByCorridor(
+            curatedThemeFiltered,
+            corridor,
+            routeMetrics,
+            routePath,
+            requestId
+        );
         log.info("Curated radius filter - requestId={}, before={}, after={}",
             requestId, curatedThemeFiltered.size(), curatedCorridor.size());
         List<Poi> curatedFiltered = poiFilterService.filter(curatedCorridor, DriveTheme.DEFAULT, requestId);
@@ -203,7 +216,13 @@ public class RecommendationFacade {
             log.info("POI 정규화 완료 - requestId={}, normalized={}", requestId, pois.size());
         }
 
-        List<Poi> corridorFiltered = filterByCorridor(pois, corridor, routeMetrics, requestId);
+        List<Poi> corridorFiltered = filterByCorridor(
+            pois,
+            corridor,
+            routeMetrics,
+            routePath,
+            requestId
+        );
         List<Poi> combined = new java.util.ArrayList<>();
         combined.addAll(curatedFiltered);
         combined.addAll(corridorFiltered);
@@ -244,10 +263,15 @@ public class RecommendationFacade {
             routingValidCourses,
             themeType,
             routeMetrics,
-            routePath
+            routePath,
+            command.durationMinutes()
         );
-        List<Course> durationFiltered = applyDurationFilter(scoredCourses, command.durationMinutes());
-        List<Course> finalCourses = selectDiverseCourses(durationFiltered, planLimit);
+        List<Course> durationFiltered = applyDurationFilter(
+            scoredCourses,
+            command.durationMinutes(),
+            planLimit
+        );
+        List<Course> finalCourses = selectDiverseCourses(durationFiltered, planLimit, requestId);
         int removedByDuration = scoredCourses.size() - durationFiltered.size();
         if (removedByDuration > 0) {
             log.info(
@@ -266,6 +290,23 @@ public class RecommendationFacade {
                 finalCourses.size()
             );
         }
+
+        List<Course> durationHardened = applyFinalDurationLimit(
+            finalCourses,
+            command.durationMinutes(),
+            planLimit,
+            requestId
+        );
+        int removedByFinalDuration = finalCourses.size() - durationHardened.size();
+        if (removedByFinalDuration > 0) {
+            log.info(
+                "Final duration hardcut - requestId={}, removed={}, remaining={}",
+                requestId,
+                removedByFinalDuration,
+                durationHardened.size()
+            );
+        }
+        finalCourses = durationHardened;
 
         log.info("추천 파이프라인 완료 - requestId={}, finalCourses={}", requestId, finalCourses.size());
         DriveCourseResult result = new DriveCourseResult(
@@ -338,6 +379,13 @@ public class RecommendationFacade {
         }
         int computed = Math.max(MIN_RADIUS, durationMinutes * RADIUS_PER_MINUTE);
         return Math.min(MAX_RADIUS, computed);
+    }
+
+    private double resolveMaxDistanceKm(Integer durationMinutes) {
+        if (durationMinutes == null || durationMinutes <= 0) {
+            return 0.0;
+        }
+        return Math.max(10.0, durationMinutes * (2.0 / 3.0));
     }
 
     private Map<String, Integer> countRawPois(RawPoiBundle rawPoiBundle) {
@@ -485,20 +533,111 @@ public class RecommendationFacade {
         return buildWeatherSnapshot(items);
     }
 
-    private List<Course> applyDurationFilter(List<Course> courses, Integer durationMinutes) {
+    private List<Course> applyDurationFilter(
+        List<Course> courses,
+        Integer durationMinutes,
+        int targetSize
+    ) {
         if (durationMinutes == null || durationMinutes <= 0) {
             return courses;
         }
-
-        List<Course> filtered = courses.stream()
-            .filter(course -> course.totalDuration().toMinutes() <= durationMinutes)
-            .toList();
-
-        if (filtered.isEmpty()) {
+        DurationConstraint constraint = DurationConstraint.from(durationMinutes);
+        if (constraint == null) {
             return courses;
         }
 
-        return filtered;
+        int minimumMinutes = Math.max(10, Math.round(durationMinutes * 0.6f));
+        List<Course> withinSoft = courses.stream()
+            .filter(course -> matchesDuration(course, durationMinutes, constraint.softMinutes(), minimumMinutes))
+            .toList();
+        if (!withinSoft.isEmpty()) {
+            return withinSoft;
+        }
+
+        List<Course> withinHard = courses.stream()
+            .filter(course -> matchesDuration(course, durationMinutes, constraint.hardMinutes(), minimumMinutes))
+            .toList();
+        if (!withinHard.isEmpty()) {
+            return withinHard;
+        }
+        int limit = Math.min(Math.max(1, targetSize), courses.size());
+        List<Course> closest = courses.stream()
+            .filter(course -> course != null && course.totalDuration() != null)
+            .sorted(java.util.Comparator.comparingLong(
+                course -> Math.abs(course.totalDuration().toMinutes() - durationMinutes)
+            ))
+            .limit(limit)
+            .toList();
+
+        return closest.isEmpty() ? courses : closest;
+    }
+
+    private List<Course> applyFinalDurationLimit(
+        List<Course> courses,
+        Integer durationMinutes,
+        int targetSize,
+        String requestId
+    ) {
+        if (courses == null || courses.isEmpty()) {
+            return List.of();
+        }
+        if (durationMinutes == null || durationMinutes <= 0) {
+            return courses;
+        }
+        int extra = Math.max(40, Math.round(durationMinutes * 0.6f));
+        long finalMaxMinutes = durationMinutes + extra;
+        List<Course> filtered = courses.stream()
+            .filter(course -> course != null && course.totalDuration() != null
+                && course.totalDuration().toMinutes() <= finalMaxMinutes)
+            .toList();
+        int removed = courses.size() - filtered.size();
+        log.info(
+            "Final duration hardcut check - requestId={}, before={}, removed={}, remaining={}, finalMaxMinutes={}",
+            requestId,
+            courses.size(),
+            removed,
+            filtered.size(),
+            finalMaxMinutes
+        );
+
+        if (!filtered.isEmpty()) {
+            return filtered;
+        }
+
+        int fallbackExtra = Math.min(20, Math.round(durationMinutes * 0.3f));
+        long fallbackMaxMinutes = finalMaxMinutes + fallbackExtra;
+        List<Course> fallbackCandidates = courses.stream()
+            .filter(course -> course != null && course.totalDuration() != null)
+            .filter(course -> course.totalDuration().toMinutes() <= fallbackMaxMinutes)
+            .toList();
+        log.info(
+            "Final duration fallback check - requestId={}, candidateCount={}, fallbackMaxMinutes={}",
+            requestId,
+            fallbackCandidates.size(),
+            fallbackMaxMinutes
+        );
+
+        if (fallbackCandidates.isEmpty()) {
+            log.info(
+                "Final duration empty result - requestId={}, reason=no-course-within-duration-policy",
+                requestId
+            );
+            return List.of();
+        }
+
+        List<Course> closest = fallbackCandidates.stream()
+            .sorted(java.util.Comparator.comparingLong(
+                course -> Math.abs(course.totalDuration().toMinutes() - durationMinutes)
+            ))
+            .limit(1)
+            .toList();
+        log.info(
+            "Final duration fallback applied - requestId={}, applied={}, returnedCount={}",
+            requestId,
+            !closest.isEmpty(),
+            closest.size()
+        );
+        return closest;
     }
 
     private List<Course> filterInvalidRouting(List<Course> courses, String requestId) {
@@ -536,13 +675,16 @@ public class RecommendationFacade {
         return true;
     }
 
-    private List<Course> selectDiverseCourses(List<Course> courses, int limit) {
+    private List<Course> selectDiverseCourses(List<Course> courses, int limit, String requestId) {
         if (courses == null || courses.isEmpty()) {
             return List.of();
         }
 
         int cap = resolveCap(limit, DEFAULT_COURSE_LIMIT);
         List<Course> selected = new java.util.ArrayList<>();
+        java.util.Set<String> firstStopKeys = new java.util.LinkedHashSet<>();
+        int firstStopRemoved = 0;
+        List<Course> fallbackCandidates = new java.util.ArrayList<>();
         for (Course course : courses) {
             if (course == null || course.stops() == null) {
                 continue;
@@ -550,18 +692,115 @@ public class RecommendationFacade {
             if (course.totalScore() < MIN_COURSE_SCORE) {
                 continue;
             }
+            String firstStopKey = firstStopKey(course);
+            if (!firstStopKey.isBlank() && firstStopKeys.contains(firstStopKey)) {
+                firstStopRemoved++;
+                fallbackCandidates.add(course);
+                continue;
+            }
+            if (isSimilarCourse(course, selected)) {
+                fallbackCandidates.add(course);
+                continue;
+            }
+            if (selected.size() < cap) {
+                selected.add(course);
+                if (!firstStopKey.isBlank()) {
+                    firstStopKeys.add(firstStopKey);
+                }
+            } else {
+                fallbackCandidates.add(course);
+            }
+        }
+
+        int uniqueCount = selected.size();
+        int fallbackAdded = 0;
+        for (Course course : fallbackCandidates) {
             if (selected.size() >= cap) {
                 break;
+            }
+            if (course == null || course.stops() == null) {
+                continue;
+            }
+            if (course.totalScore() < MIN_COURSE_SCORE) {
+                continue;
+            }
+            if (selected.contains(course)) {
+                continue;
             }
             if (isSimilarCourse(course, selected)) {
                 continue;
             }
             selected.add(course);
+            fallbackAdded++;
+        }
+
+        int forcedAdded = 0;
+        if (selected.size() < cap) {
+            for (Course course : courses) {
+                if (selected.size() >= cap) {
+                    break;
+                }
+                if (course == null || course.stops() == null) {
+                    continue;
+                }
+                if (selected.contains(course)) {
+                    continue;
+                }
+                selected.add(course);
+                forcedAdded++;
+            }
+        }
+
+        if (firstStopRemoved > 0 || fallbackAdded > 0 || forcedAdded > 0) {
+            log.info(
+                "First stop diversity result - requestId={}, unique={}, fallbackAdded={}, forcedAdded={}, removed={}",
+                requestId,
+                uniqueCount,
+                fallbackAdded,
+                forcedAdded,
+                firstStopRemoved
+            );
         }
         if (selected.isEmpty() && !courses.isEmpty()) {
             selected.add(courses.getFirst());
         }
         return selected;
+    }
+
+    private String firstStopKey(Course course) {
+        if (course == null || course.stops() == null || course.stops().isEmpty()) {
+            return "";
+        }
+        CourseStop first = course.stops().getFirst();
+        return stopKey(first);
+    }
+
+    private boolean matchesDuration(
+        Course course,
+        int targetMinutes,
+        int rangeMinutes,
+        int minimumMinutes
+    ) {
+        if (course == null || course.totalDuration() == null) {
+            return false;
+        }
+        long minutes = course.totalDuration().toMinutes();
+        if (minutes < minimumMinutes) {
+            return false;
+        }
+        return Math.abs(minutes - targetMinutes) <= rangeMinutes;
+    }
+
+    private record DurationConstraint(int softMinutes, int hardMinutes) {
+        private static final int MIN_SOFT_MINUTES = 20;
+        private static final int MIN_HARD_MINUTES = 40;
+
+        private static DurationConstraint from(Integer durationMinutes) {
+            if (durationMinutes == null || durationMinutes <= 0) {
+                return null;
+            }
+            return new DurationConstraint(MIN_SOFT_MINUTES, MIN_HARD_MINUTES);
+        }
     }
 
     private List<Poi> filterOriginCluster(List<Poi> pois, GeoPoint origin, String requestId) {
@@ -673,6 +912,7 @@ public class RecommendationFacade {
         List<Poi> pois,
         RouteCorridor corridor,
         RouteMetrics routeMetrics,
+        io.routepickapi.service.recommendation.RoutePath routePath,
         String requestId
     ) {
         if (pois == null || pois.isEmpty()) {
@@ -681,28 +921,55 @@ public class RecommendationFacade {
 
         List<Poi> filtered = new java.util.ArrayList<>();
         int removed = 0;
+        int relaxed = 0;
         for (Poi poi : pois) {
             if (poi == null) {
                 removed++;
                 continue;
             }
             GeoPoint point = new GeoPoint(poi.lng(), poi.lat());
-            if (!corridor.contains(point)) {
+            double corridorRadiusKm = routeMetrics.corridorRadiusKm();
+            double maxDetourKm = routeMetrics.maxDetourKm();
+            double maxDelayMinutes = routeMetrics.maxDelayMinutes();
+            if (routePath != null) {
+                double progressRatio = routePath.progressRatio(point);
+                if (progressRatio >= 0.2 && progressRatio <= 0.8) {
+                    corridorRadiusKm *= 1.5;
+                    maxDetourKm *= 1.5;
+                    maxDelayMinutes *= 1.5;
+                    relaxed++;
+                }
+            }
+            double distanceToLineKm = io.routepickapi.service.recommendation.GeoUtils.distancePointToSegmentKm(
+                corridor.origin(),
+                corridor.destination(),
+                point
+            );
+            if (distanceToLineKm > corridorRadiusKm) {
                 removed++;
                 continue;
             }
             double deviationKm = estimateDetourKm(routeMetrics, corridor.origin(), corridor.destination(), point);
             double delayMinutes = estimateDelayMinutes(routeMetrics, deviationKm);
-            if (deviationKm > MAX_ROUTE_DEVIATION_KM || delayMinutes > MAX_DETOUR_MINUTES) {
+            if (deviationKm > maxDetourKm || delayMinutes > maxDelayMinutes) {
                 removed++;
                 continue;
             }
             filtered.add(poi);
         }
 
+        if (filtered.isEmpty()) {
+            log.info("Route corridor fallback - requestId={}, remaining=0, fallbackToOriginal={}",
+                requestId, pois.size());
+            return pois;
+        }
+
         if (removed > 0) {
             log.info("Route corridor filter - requestId={}, removed={}, remaining={}",
                 requestId, removed, filtered.size());
+        }
+        if (relaxed > 0) {
+            log.info("Route corridor relaxed - requestId={}, relaxedCount={}", requestId, relaxed);
         }
         return filtered;
     }
