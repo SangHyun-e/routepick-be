@@ -71,6 +71,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/auth/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/auth/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/courses/recommend").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/recommendations/drive-courses")
+                .permitAll()
                 .requestMatchers(HttpMethod.GET, "/weather/drive-message").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/parking/nearby").permitAll()
                 .requestMatchers(HttpMethod.GET, "/posts/**", "/posts/*/comments/**", "/places/**")
