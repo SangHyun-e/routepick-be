@@ -1,21 +1,14 @@
 package io.routepickapi.controller;
 
-import io.routepickapi.dto.course.CourseCurationRequest;
-import io.routepickapi.dto.course.CourseCurationResponse;
 import io.routepickapi.dto.course.CourseRecommendationRequest;
 import io.routepickapi.dto.course.CourseRecommendationResponse;
 import io.routepickapi.dto.course.CourseRecommendationSaveRequest;
 import io.routepickapi.dto.course.CourseRecommendationSaveResponse;
-import io.routepickapi.entity.notification.NotificationResourceType;
-import io.routepickapi.entity.notification.NotificationType;
 import io.routepickapi.security.AuthUser;
-import io.routepickapi.service.CourseCurationService;
 import io.routepickapi.service.CourseRecommendationSaveService;
 import io.routepickapi.service.CourseRecommendationService;
-import io.routepickapi.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
@@ -44,8 +37,6 @@ public class CourseController {
 
     private final CourseRecommendationService courseRecommendationService;
     private final CourseRecommendationSaveService courseRecommendationSaveService;
-    private final CourseCurationService courseCurationService;
-    private final NotificationService notificationService;
 
     @Operation(summary = "드라이브 코스 추천", description = "출발지/도착지/추천 조건 기반으로 코스를 추천합니다.")
     @PostMapping("/recommend")
@@ -61,35 +52,6 @@ public class CourseController {
         );
         return courseRecommendationService.recommend(request);
     }
-
-    @Operation(summary = "AI 추천 더보기", description = "추천 코스 기반으로 AI 추가 추천과 설명을 제공합니다.",
-        security = {@SecurityRequirement(name = "bearerAuth")})
-    @PostMapping("/curation")
-    @PreAuthorize("isAuthenticated()")
-    public CourseCurationResponse curate(
-        @Valid @RequestBody CourseCurationRequest request,
-        @AuthenticationPrincipal AuthUser currentUser,
-        HttpServletRequest httpServletRequest
-    ) {
-        String rateLimitKey = resolveRateLimitKey(currentUser, httpServletRequest);
-        log.info("POST /courses/curation - key={}", rateLimitKey);
-        CourseCurationResponse response = courseCurationService.curate(request, rateLimitKey);
-        if (currentUser != null) {
-            notificationService.createNotificationByUserId(
-                currentUser.id(),
-                NotificationType.COURSE_READY,
-                "추천 결과가 준비됐어요",
-                "요청하신 드라이브 코스 추천이 완료됐어요.",
-                NotificationResourceType.COURSE,
-                null,
-                null,
-                null,
-                null
-            );
-        }
-        return response;
-    }
-
     @Operation(summary = "추천 코스 저장", description = "추천 결과를 내 저장 목록에 추가합니다.",
         security = {@SecurityRequirement(name = "bearerAuth")})
     @PostMapping("/saved")
@@ -129,22 +91,5 @@ public class CourseController {
         return ResponseEntity.noContent().build();
     }
 
-    private String resolveRateLimitKey(AuthUser currentUser, HttpServletRequest request) {
-        if (currentUser != null) {
-            return "user:" + currentUser.id();
-        }
-
-        if (request == null) {
-            return "anonymous";
-        }
-
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            String ip = forwarded.split(",")[0].trim();
-            return ip.isBlank() ? "anonymous" : "ip:" + ip;
-        }
-
-        String remoteAddr = request.getRemoteAddr();
-        return remoteAddr == null || remoteAddr.isBlank() ? "anonymous" : "ip:" + remoteAddr;
-    }
+    
 }

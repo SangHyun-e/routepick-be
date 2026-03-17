@@ -12,6 +12,7 @@ public record CourseRecommendationSaveRequest(
     @NotBlank @Schema(description = "출발지") String origin,
     @NotBlank @Schema(description = "도착지") String destination,
     @NotBlank @Schema(description = "추천 조건 요약") String theme,
+    @Schema(description = "총 소요 시간(분)") Long totalDurationMinutes,
     @NotBlank @Schema(description = "경로 요약") String routeSummary,
     @NotBlank @Schema(description = "추천 설명") String explanation,
     @NotNull @Size(min = 1, max = 10) @Valid

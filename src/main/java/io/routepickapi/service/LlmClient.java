@@ -2,7 +2,6 @@ package io.routepickapi.service;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.routepickapi.dto.course.CourseCurationResponse;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -17,9 +16,10 @@ import org.springframework.web.client.RestClientException;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class CruiserLlmClient {
+public class LlmClient {
 
     private static final String JSON_RESPONSE_FORMAT = "json_object";
+    private static final double DEFAULT_TEMPERATURE = 0.4;
 
     private final ObjectMapper objectMapper;
     private final RestClient restClient = RestClient.create();
@@ -33,7 +33,7 @@ public class CruiserLlmClient {
     @Value("${llm.model:gpt-4o-mini}")
     private String model;
 
-    public Optional<CourseCurationResponse> requestCuration(String prompt) {
+    public <T> Optional<T> requestJson(String prompt, Class<T> responseType) {
         if (prompt == null || prompt.isBlank()) {
             return Optional.empty();
         }
@@ -46,7 +46,7 @@ public class CruiserLlmClient {
         ChatCompletionRequest request = new ChatCompletionRequest(
             model,
             List.of(new ChatMessage("user", prompt)),
-            0.4,
+            DEFAULT_TEMPERATURE,
             new ResponseFormat(JSON_RESPONSE_FORMAT)
         );
 
@@ -68,7 +68,7 @@ public class CruiserLlmClient {
                 return Optional.empty();
             }
 
-            return Optional.of(objectMapper.readValue(message.content(), CourseCurationResponse.class));
+            return Optional.of(objectMapper.readValue(message.content(), responseType));
         } catch (RestClientException ex) {
             log.warn("LLM request failed", ex);
             return Optional.empty();
