@@ -43,6 +43,7 @@ public class CourseRecommendationSaveService {
             request.origin(),
             request.destination(),
             sanitizeTheme(request.theme()),
+            request.totalDurationMinutes(),
             request.routeSummary(),
             request.explanation(),
             stops

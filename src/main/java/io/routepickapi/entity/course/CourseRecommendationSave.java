@@ -50,6 +50,9 @@ public class CourseRecommendationSave extends BaseTimeEntity {
     @Column(nullable = false, length = 20)
     private String theme;
 
+    @Column(name = "total_duration_minutes")
+    private Long totalDurationMinutes;
+
     @Column(name = "route_summary", nullable = false, length = 500)
     private String routeSummary;
 
@@ -69,6 +72,7 @@ public class CourseRecommendationSave extends BaseTimeEntity {
         String origin,
         String destination,
         String theme,
+        Long totalDurationMinutes,
         String routeSummary,
         String explanation,
         List<CourseRecommendationStop> stops
@@ -95,6 +99,7 @@ public class CourseRecommendationSave extends BaseTimeEntity {
         this.origin = origin;
         this.destination = destination;
         this.theme = theme;
+        this.totalDurationMinutes = totalDurationMinutes;
         this.routeSummary = routeSummary;
         this.explanation = explanation;
         if (stops != null) {
