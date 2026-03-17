@@ -8,16 +8,14 @@ import java.util.List;
  */
 @Schema(description = "추천 점수 상세")
 public record ScoreBreakdownResponse(
-    @Schema(description = "경관 점수", example = "24.0")
-    double sceneryScore,
-    @Schema(description = "드라이브 적합성 점수", example = "20.0")
-    double driveScore,
-    @Schema(description = "카테고리 다양성 점수", example = "11.0")
-    double diversityScore,
-    @Schema(description = "동선 자연스러움 점수", example = "12.0")
-    double routeSmoothnessScore,
-    @Schema(description = "날씨 적합성 점수", example = "10.0")
-    double weatherScore,
+    @Schema(description = "테마 점수", example = "30.0")
+    double themeScore,
+    @Schema(description = "경로 근접 점수", example = "22.0")
+    double distanceScore,
+    @Schema(description = "도착지 진행 점수", example = "18.0")
+    double progressScore,
+    @Schema(description = "장소 품질 점수", example = "12.0")
+    double reviewScore,
     @Schema(description = "패널티 점수", example = "5.0")
     double penaltyScore,
     @Schema(description = "총 점수", example = "72.0")

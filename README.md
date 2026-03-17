@@ -58,6 +58,38 @@ docker compose -f ../../docker-compose.prod.yml up -d --build
 
 ---
 
+## 🔐 외부 API 키 설정
+외부 API 키는 환경변수로 주입하고, `application.yml`에서 참조합니다.
+드라이브 추천은 **curated 스팟 + Kakao Local + TourAPI + Routing + KMA 날씨** 조합으로 동작합니다.
+
+```yaml
+external:
+  kakao:
+    base-url: ${KAKAO_API_BASE_URL:https://dapi.kakao.com}
+    api-key: ${KAKAO_REST_API_KEY:}
+  tourapi:
+    base-url: ${TOUR_API_BASE_URL:https://apis.data.go.kr/B551011/KorService2}
+    service-key: ${TOUR_API_KEY:}
+    mobile-os: ${TOUR_API_MOBILE_OS:ETC}
+    mobile-app: ${TOUR_API_MOBILE_APP:RoutePick}
+  routing:
+    base-url: ${ROUTING_BASE_URL:https://api.openrouteservice.org}
+    api-key: ${ROUTING_API_KEY:}
+    profile: ${ROUTING_PROFILE:driving-car}
+  weather:
+    kma:
+      base-url: ${KMA_BASE_URL:https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0}
+      service-key: ${KMA_SERVICE_KEY:}
+```
+
+드라이브 추천 필수 환경변수 예시:
+- `KAKAO_REST_API_KEY`
+- `TOUR_API_KEY`
+- `ROUTING_API_KEY`
+- `KMA_SERVICE_KEY`
+
+---
+
 
 ## 🔀 브랜치 전략 & 커밋 컨벤션
 - 브랜치: `main`(배포), `dev`(통합), `feature/*`

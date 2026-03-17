@@ -1,10 +1,9 @@
 package io.routepickapi.infrastructure.client.kakao;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.place.KakaoPlaceSearchResponse;
-import java.util.List;
+import io.routepickapi.infrastructure.client.kakao.dto.KakaoCoordToAddressResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -14,13 +13,17 @@ import org.springframework.web.client.RestClient;
 @Slf4j
 @Component
 public class KakaoLocalClient {
+    private final RestClient restClient;
+    private final String restApiKey;
 
-    private static final String BASE_URL = "https://dapi.kakao.com";
-
-    private final RestClient restClient = RestClient.create(BASE_URL);
-
-    @Value("${kakao.rest-api-key:}")
-    private String restApiKey;
+    public KakaoLocalClient(
+        RestClient.Builder builder,
+        @Value("${external.kakao.base-url}") String baseUrl,
+        @Value("${external.kakao.api-key:}") String restApiKey
+    ) {
+        this.restClient = builder.baseUrl(baseUrl).build();
+        this.restApiKey = restApiKey;
+    }
 
     public KakaoPlaceSearchResponse searchKeyword(String keyword, int page, int size) {
         validateRestApiKey();
@@ -77,7 +80,7 @@ public class KakaoLocalClient {
             .body(KakaoPlaceSearchResponse.class);
     }
 
-    public CoordToAddressResponse coordToAddress(double longitude, double latitude) {
+    public KakaoCoordToAddressResponse coordToAddress(double longitude, double latitude) {
         validateRestApiKey();
 
         return restClient.get()
@@ -88,7 +91,7 @@ public class KakaoLocalClient {
                 .build())
             .header(HttpHeaders.AUTHORIZATION, "KakaoAK " + restApiKey)
             .retrieve()
-            .body(CoordToAddressResponse.class);
+            .body(KakaoCoordToAddressResponse.class);
     }
 
     private void validateRestApiKey() {
@@ -98,35 +101,4 @@ public class KakaoLocalClient {
         }
     }
 
-    public record CoordToAddressResponse(List<CoordDocument> documents) {
-    }
-
-    public record CoordDocument(
-        Address address,
-        @JsonAlias("road_address") RoadAddress roadAddress
-    ) {
-    }
-
-    public record Address(
-        @JsonAlias("address_name") String addressName,
-        @JsonAlias("region_1depth_name") String region1DepthName,
-        @JsonAlias("region_2depth_name") String region2DepthName,
-        @JsonAlias("region_3depth_name") String region3DepthName,
-        @JsonAlias("main_address_no") String mainAddressNo,
-        @JsonAlias("sub_address_no") String subAddressNo
-    ) {
-    }
-
-    public record RoadAddress(
-        @JsonAlias("address_name") String addressName,
-        @JsonAlias("region_1depth_name") String region1DepthName,
-        @JsonAlias("region_2depth_name") String region2DepthName,
-        @JsonAlias("region_3depth_name") String region3DepthName,
-        @JsonAlias("road_name") String roadName,
-        @JsonAlias("main_building_no") String mainBuildingNo,
-        @JsonAlias("sub_building_no") String subBuildingNo,
-        @JsonAlias("building_name") String buildingName,
-        @JsonAlias("zone_no") String zoneNo
-    ) {
-    }
 }

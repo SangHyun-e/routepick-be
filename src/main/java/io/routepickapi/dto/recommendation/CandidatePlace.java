@@ -12,7 +12,9 @@ public record CandidatePlace(
     String categoryGroupCode,
     String categoryGroupName,
     String phone,
-    String placeUrl
+    String placeUrl,
+    CandidateSource source,
+    java.util.List<String> tags
 ) {
 
     public String key() {
@@ -25,6 +27,10 @@ public record CandidatePlace(
 
     public String normalizedAddress() {
         return normalize(address);
+    }
+
+    public java.util.List<String> safeTags() {
+        return tags == null ? java.util.List.of() : tags;
     }
 
     private String normalize(String raw) {

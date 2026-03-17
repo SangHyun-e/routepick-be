@@ -14,8 +14,10 @@ import org.junit.jupiter.api.Test;
 
 class CourseSummaryResponseMapperTest {
 
+    private final PoiTagLabelMapper tagLabelMapper = new PoiTagLabelMapper();
+
     private final CourseSummaryResponseMapper mapper = new CourseSummaryResponseMapper(
-        new CourseStopResponseMapper(),
+        new CourseStopResponseMapper(tagLabelMapper),
         new ScoreBreakdownResponseMapper()
     );
 
@@ -37,7 +39,7 @@ class CourseSummaryResponseMapperTest {
             0.6
         );
         CourseStop stop = new CourseStop(0, poi, null, 0.0, null);
-        ScoreBreakdown breakdown = new ScoreBreakdown(10, 10, 10, 10, 10, 2, List.of("too-long"));
+        ScoreBreakdown breakdown = new ScoreBreakdown(10, 10, 10, 10, 2, List.of("too-long"));
         Course course = new Course(
             1L,
             "서울특별시 중구",
@@ -71,7 +73,7 @@ class CourseSummaryResponseMapperTest {
             null,
             0.0,
             null,
-            new ScoreBreakdown(0, 0, 0, 0, 0, 0, null),
+            new ScoreBreakdown(0, 0, 0, 0, 0, null),
             null
         );
 

@@ -14,6 +14,10 @@ public record CourseSummaryResponse(
     String region,
     @Schema(description = "테마", example = "coastal")
     String theme,
+    @Schema(description = "코스 제목", example = "야경 드라이브 추천 코스")
+    String title,
+    @Schema(description = "코스 설명", example = "남산서울타워, 반포한강공원을 들러 이동합니다.")
+    String description,
     @Schema(description = "총 이동 거리(km)", example = "78.4")
     double totalDistanceKm,
     @Schema(description = "총 소요 시간(분)", example = "210")

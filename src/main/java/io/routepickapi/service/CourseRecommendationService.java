@@ -23,6 +23,9 @@ import io.routepickapi.service.recommendation.FinalRecommendationValidator;
 import io.routepickapi.service.recommendation.PlaceDeduplicator;
 import io.routepickapi.service.recommendation.RecommendationFallbackPolicy;
 import io.routepickapi.service.recommendation.CandidateSearchOption;
+import io.routepickapi.service.recommendation.RouteCorridor;
+import io.routepickapi.service.recommendation.RouteMetrics;
+import io.routepickapi.service.recommendation.RouteMetricsService;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,9 +40,9 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class CourseRecommendationService {
 
-    private static final int DEFAULT_MAX_STOPS = 3;
-    private static final int MIN_STOPS = 2;
-    private static final int MAX_STOPS = 4;
+    private static final int DEFAULT_MAX_STOPS = 1;
+    private static final int MIN_STOPS = 1;
+    private static final int MAX_STOPS = 2;
     private static final int MIN_COURSE_COUNT = 3;
     private static final int EXPANDED_SEARCH_RADIUS_METERS = 12000;
     private static final String RELAXATION_MESSAGE =
@@ -52,11 +55,15 @@ public class CourseRecommendationService {
     private final CourseScoreCalculator courseScoreCalculator;
     private final FinalRecommendationValidator finalRecommendationValidator;
     private final RecommendationFallbackPolicy recommendationFallbackPolicy;
+    private final RouteMetricsService routeMetricsService;
 
     public CourseRecommendationResponse recommend(CourseRecommendationRequest request) {
         if (request == null) {
             throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "요청값이 비어있습니다.");
         }
+
+        log.info("B-structure recommend entry - origin={}, destination={}, maxStops={}, maxDetourKm={}",
+            request.origin(), request.destination(), request.maxStops(), request.maxDetourKm());
 
         DrivePreference preference = resolvePreferences(
             request.moods(),
@@ -111,10 +118,18 @@ public class CourseRecommendationService {
         DrivePreference preference = resolvePreferences(moods, stopTypes, routeStyles, autoRecommend);
         GeoPoint originPoint = resolvePoint(origin);
         GeoPoint destinationPoint = resolvePoint(destination);
+        RouteMetrics routeMetrics = routeMetricsService.buildMetrics(
+            originPoint,
+            destinationPoint,
+            sanitizeMaxDetourKm(null)
+        );
+        RouteCorridor corridor = new RouteCorridor(originPoint, destinationPoint, routeMetrics);
         List<CandidatePlace> candidates = candidatePlaceCollector.collectCandidates(
             originPoint,
             destinationPoint,
-            preference
+            preference,
+            CandidateSearchOption.defaultOption(),
+            corridor
         );
         List<CandidatePlace> deduplicated = placeDeduplicator.deduplicate(candidates);
 
@@ -132,16 +147,20 @@ public class CourseRecommendationService {
         int maxStops,
         double maxDetourKm
     ) {
+        RouteMetrics routeMetrics = routeMetricsService.buildMetrics(origin, destination, maxDetourKm);
+        RouteCorridor corridor = new RouteCorridor(origin, destination, routeMetrics);
         ConditionRequirement requirement = buildConditionRequirement(request, preference);
         CandidateSearchOption searchOption = CandidateSearchOption.defaultOption()
-            .withStopTypeFilter(requirement.requireStopType());
+            .withStopTypeFilter(requirement.requireStopType())
+            .withSearchRadiusMeters(corridor.searchRadiusMeters(CandidateSearchOption.DEFAULT_SEARCH_RADIUS_METERS));
         RecommendationRun run = buildRecommendationRun(
             origin,
             destination,
             preference,
             maxStops,
-            maxDetourKm,
-            searchOption
+            searchOption,
+            corridor,
+            routeMetrics
         );
 
         RelaxationState relaxationState = new RelaxationState(
@@ -175,8 +194,9 @@ public class CourseRecommendationService {
                 destination,
                 preference,
                 maxStops,
-                maxDetourKm,
-                searchOption
+                searchOption,
+                corridor,
+                routeMetrics
             );
             filtered = filterByConditions(run.courses(), origin, destination, preference, requirement);
         }
@@ -188,21 +208,34 @@ public class CourseRecommendationService {
         }
 
         if (filtered.size() < MIN_COURSE_COUNT) {
-            relaxationState = relaxationState.withRadiusRelaxed(EXPANDED_SEARCH_RADIUS_METERS);
-            searchOption = searchOption.withSearchRadiusMeters(EXPANDED_SEARCH_RADIUS_METERS);
+            int relaxedRadius = Math.max(
+                EXPANDED_SEARCH_RADIUS_METERS,
+                corridor.searchRadiusMeters(CandidateSearchOption.DEFAULT_SEARCH_RADIUS_METERS)
+            );
+            relaxationState = relaxationState.withRadiusRelaxed(relaxedRadius);
+            searchOption = searchOption.withSearchRadiusMeters(relaxedRadius);
             run = buildRecommendationRun(
                 origin,
                 destination,
                 preference,
                 maxStops,
-                maxDetourKm,
-                searchOption
+                searchOption,
+                corridor,
+                routeMetrics
             );
             filtered = filterByConditions(run.courses(), origin, destination, preference, requirement);
         }
 
         if (filtered.isEmpty()) {
-            filtered = applyFallback(origin, destination, run.candidates(), preference, maxStops);
+            filtered = applyFallback(
+                origin,
+                destination,
+                run.candidates(),
+                preference,
+                maxStops,
+                corridor,
+                routeMetrics
+            );
         }
 
         CourseCandidate bestCourse = selectBestCourse(filtered, maxStops);
@@ -214,14 +247,16 @@ public class CourseRecommendationService {
         GeoPoint destination,
         DrivePreference preference,
         int maxStops,
-        double maxDetourKm,
-        CandidateSearchOption searchOption
+        CandidateSearchOption searchOption,
+        RouteCorridor corridor,
+        RouteMetrics routeMetrics
     ) {
         List<CandidatePlace> candidates = candidatePlaceCollector.collectCandidates(
             origin,
             destination,
             preference,
-            searchOption
+            searchOption,
+            corridor
         );
         List<CandidatePlace> deduplicated = placeDeduplicator.deduplicate(candidates);
         List<CourseCandidate> courses = courseCandidateBuilder.buildCourses(
@@ -237,13 +272,14 @@ public class CourseRecommendationService {
             origin,
             destination,
             preference,
-            maxStops
+            maxStops,
+            routeMetrics
         );
         List<CourseCandidate> validated = finalRecommendationValidator.validateCourses(
             scored,
             origin,
             destination,
-            maxDetourKm
+            routeMetrics
         );
         return new RecommendationRun(deduplicated, validated);
     }
@@ -274,7 +310,9 @@ public class CourseRecommendationService {
         GeoPoint destination,
         List<CandidatePlace> candidates,
         DrivePreference preference,
-        int maxStops
+        int maxStops,
+        RouteCorridor corridor,
+        RouteMetrics routeMetrics
     ) {
         List<CandidatePlace> baseCandidates = candidates;
         if (baseCandidates == null || baseCandidates.isEmpty()) {
@@ -285,7 +323,8 @@ public class CourseRecommendationService {
                 origin,
                 destination,
                 preference,
-                fallbackOption
+                fallbackOption,
+                corridor
             );
             baseCandidates = placeDeduplicator.deduplicate(baseCandidates);
         }
@@ -301,7 +340,8 @@ public class CourseRecommendationService {
             origin,
             destination,
             preference,
-            maxStops
+            maxStops,
+            routeMetrics
         );
     }
 
@@ -480,7 +520,8 @@ public class CourseRecommendationService {
         return String.join(" ",
             safeLower(candidate.name()),
             safeLower(candidate.categoryName()),
-            safeLower(candidate.categoryGroupName())
+            safeLower(candidate.categoryGroupName()),
+            safeLower(String.join(" ", candidate.safeTags()))
         );
     }
 
@@ -547,7 +588,7 @@ public class CourseRecommendationService {
     }
 
     private int sanitizeMaxStops(Integer maxStops) {
-        if (maxStops == null) {
+        if (maxStops == null || maxStops <= 0) {
             return DEFAULT_MAX_STOPS;
         }
         return Math.max(MIN_STOPS, Math.min(MAX_STOPS, maxStops));
@@ -555,7 +596,7 @@ public class CourseRecommendationService {
 
     private double sanitizeMaxDetourKm(Integer maxDetourKm) {
         if (maxDetourKm == null) {
-            return 15;
+            return 10;
         }
         return Math.max(5, Math.min(50, maxDetourKm));
     }

@@ -8,7 +8,8 @@ public record CourseStop(
     Poi poi,
     Duration stayDuration,
     double segmentDistanceKm,
-    Duration segmentDuration
+    Duration segmentDuration,
+    boolean routingEstimated
 ) {
 
     public CourseStop {
@@ -20,5 +21,15 @@ public record CourseStop(
         }
         stayDuration = stayDuration == null ? Duration.ZERO : stayDuration;
         segmentDuration = segmentDuration == null ? Duration.ZERO : segmentDuration;
+    }
+
+    public CourseStop(
+        int order,
+        Poi poi,
+        Duration stayDuration,
+        double segmentDistanceKm,
+        Duration segmentDuration
+    ) {
+        this(order, poi, stayDuration, segmentDistanceKm, segmentDuration, false);
     }
 }

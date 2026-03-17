@@ -24,7 +24,10 @@ public class RecommendationFallbackPolicy {
         }
 
         List<CandidatePlace> sorted = new ArrayList<>(candidates);
-        sorted.sort(Comparator.comparingDouble(place -> distanceKm(origin, place)));
+        sorted.sort(Comparator
+            .comparingInt((CandidatePlace place) -> place.source() == null ? 0 : place.source().priority())
+            .reversed()
+            .thenComparingDouble(place -> distanceKm(origin, place)));
 
         int targetStops = Math.min(minStops, sorted.size());
         if (targetStops <= 0) {

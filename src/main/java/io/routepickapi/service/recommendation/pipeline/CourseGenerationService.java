@@ -3,7 +3,12 @@ package io.routepickapi.service.recommendation.pipeline;
 import io.routepickapi.domain.poi.Poi;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -15,6 +20,9 @@ public class CourseGenerationService {
     private static final int MAX_STOPS = 4;
     private static final int MAX_CANDIDATES = 30;
     private static final int DEFAULT_LIMIT = 40;
+    private static final int MAX_CANDIDATES_PER_TYPE = 8;
+    private static final Set<String> SOURCE_TAGS = Set.of("osm", "kakao", "tourapi");
+    private static final double SIMILARITY_THRESHOLD = 0.6;
 
     public List<CoursePlan> generate(List<Poi> pois, int maxStops, int limit) {
         if (pois == null || pois.isEmpty()) {
@@ -24,10 +32,7 @@ public class CourseGenerationService {
         int safeMaxStops = Math.max(MIN_STOPS, Math.min(maxStops, MAX_STOPS));
         int safeLimit = limit > 0 ? limit : DEFAULT_LIMIT;
 
-        List<Poi> candidates = pois.stream()
-            .sorted(Comparator.comparingDouble(this::baseScore).reversed())
-            .limit(MAX_CANDIDATES)
-            .toList();
+        List<Poi> candidates = buildDiverseCandidates(pois);
 
         List<CoursePlan> plans = new ArrayList<>();
         for (int stopCount = MIN_STOPS; stopCount <= safeMaxStops; stopCount++) {
@@ -53,7 +58,9 @@ public class CourseGenerationService {
             return;
         }
         if (current.size() == targetSize) {
-            results.add(new CoursePlan(List.copyOf(current)));
+            if (!isTooSimilar(current, results)) {
+                results.add(new CoursePlan(List.copyOf(current)));
+            }
             return;
         }
 
@@ -69,5 +76,83 @@ public class CourseGenerationService {
 
     private double baseScore(Poi poi) {
         return poi.viewScore() + poi.driveSuitability();
+    }
+
+    private List<Poi> buildDiverseCandidates(List<Poi> pois) {
+        List<Poi> sorted = pois.stream()
+            .sorted(Comparator.comparingDouble(this::baseScore).reversed())
+            .toList();
+
+        Map<String, List<Poi>> grouped = sorted.stream()
+            .collect(Collectors.groupingBy(this::resolveTypeKey, LinkedHashMap::new, Collectors.toList()));
+
+        List<Poi> mixed = new ArrayList<>();
+        for (List<Poi> group : grouped.values()) {
+            if (group == null || group.isEmpty()) {
+                continue;
+            }
+            int end = Math.min(MAX_CANDIDATES_PER_TYPE, group.size());
+            mixed.addAll(group.subList(0, end));
+        }
+
+        return mixed.stream().limit(MAX_CANDIDATES).toList();
+    }
+
+    private String resolveTypeKey(Poi poi) {
+        if (poi == null) {
+            return "unknown";
+        }
+        if (poi.type() != null && !poi.type().isBlank()) {
+            return poi.type().trim().toLowerCase(Locale.ROOT);
+        }
+        if (poi.tags() != null) {
+            for (String tag : poi.tags()) {
+                if (tag == null || tag.isBlank()) {
+                    continue;
+                }
+                String normalized = tag.trim().toLowerCase(Locale.ROOT);
+                if (SOURCE_TAGS.contains(normalized)) {
+                    continue;
+                }
+                return normalized;
+            }
+        }
+        return "unknown";
+    }
+
+    private boolean isTooSimilar(List<Poi> candidate, List<CoursePlan> existing) {
+        if (existing == null || existing.isEmpty()) {
+            return false;
+        }
+
+        Set<String> candidateIds = candidate.stream()
+            .map(poi -> poi.source() + ":" + poi.externalId())
+            .collect(Collectors.toSet());
+
+        int candidateSize = candidateIds.size();
+        if (candidateSize == 0) {
+            return false;
+        }
+
+        for (CoursePlan plan : existing) {
+            if (plan == null || plan.stops() == null || plan.stops().isEmpty()) {
+                continue;
+            }
+            Set<String> planIds = plan.stops().stream()
+                .map(poi -> poi.source() + ":" + poi.externalId())
+                .collect(Collectors.toSet());
+            int overlap = 0;
+            for (String id : candidateIds) {
+                if (planIds.contains(id)) {
+                    overlap++;
+                }
+            }
+            double ratio = overlap / (double) Math.min(candidateSize, planIds.size());
+            if (ratio >= SIMILARITY_THRESHOLD) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

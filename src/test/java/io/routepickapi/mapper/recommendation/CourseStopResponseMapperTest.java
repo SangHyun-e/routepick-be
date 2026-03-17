@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 
 class CourseStopResponseMapperTest {
 
-    private final CourseStopResponseMapper mapper = new CourseStopResponseMapper();
+    private final CourseStopResponseMapper mapper = new CourseStopResponseMapper(new PoiTagLabelMapper());
 
     @Test
     void map_sortsTagsAndHandlesNullDurations() {
@@ -36,7 +36,7 @@ class CourseStopResponseMapperTest {
 
         // then
         assertThat(response.name()).isEqualTo("테스트 전망대");
-        assertThat(response.tags()).containsExactly("alpha", "beta", "gamma");
+        assertThat(response.tags()).containsExactly("전망대");
         assertThat(response.stayMinutes()).isZero();
         assertThat(response.segmentDurationMinutes()).isZero();
     }

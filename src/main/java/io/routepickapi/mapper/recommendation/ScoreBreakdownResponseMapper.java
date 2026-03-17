@@ -10,15 +10,14 @@ public class ScoreBreakdownResponseMapper {
 
     public ScoreBreakdownResponse map(ScoreBreakdown breakdown) {
         if (breakdown == null) {
-            return new ScoreBreakdownResponse(0, 0, 0, 0, 0, 0, 0, List.of());
+            return new ScoreBreakdownResponse(0, 0, 0, 0, 0, 0, List.of());
         }
 
         return new ScoreBreakdownResponse(
-            breakdown.sceneryScore(),
-            breakdown.driveScore(),
-            breakdown.diversityScore(),
-            breakdown.routeSmoothnessScore(),
-            breakdown.weatherScore(),
+            breakdown.themeScore(),
+            breakdown.distanceScore(),
+            breakdown.progressScore(),
+            breakdown.reviewScore(),
             breakdown.penaltyScore(),
             breakdown.totalScore(),
             breakdown.penaltyReasons() == null ? List.of() : List.copyOf(breakdown.penaltyReasons())

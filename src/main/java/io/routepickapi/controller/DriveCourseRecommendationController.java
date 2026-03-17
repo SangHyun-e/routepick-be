@@ -1,6 +1,8 @@
 package io.routepickapi.controller;
 
 import io.routepickapi.common.error.ApiErrorResponse;
+import io.routepickapi.common.error.CustomException;
+import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.recommendation.RecommendationRequest;
 import io.routepickapi.dto.recommendation.RecommendationResponse;
 import io.routepickapi.mapper.recommendation.RecommendationResponseMapper;
@@ -15,6 +17,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -29,6 +32,7 @@ import org.springdoc.core.annotations.ParameterObject;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/recommendations")
+@Slf4j
 public class DriveCourseRecommendationController {
 
     private final RecommendationFacade recommendationFacade;
@@ -56,24 +60,24 @@ public class DriveCourseRecommendationController {
                           \"originLat\": 37.5665,
                           \"originLng\": 126.978,
                           \"departureTime\": \"2024-10-01T09:30:00\",
-                          \"generatedAt\": \"2024-10-01T09:29:58\",
                           \"courses\": [
                             {
                               \"courseId\": null,
                               \"region\": \"서울특별시 중구\",
-                              \"theme\": \"coastal\",
+                              \"theme\": \"야경 드라이브\",
+                              \"title\": \"야경 드라이브 추천 코스\",
+                              \"description\": \"남산서울타워, 반포한강공원을 들러 이동합니다.\",
                               \"totalDistanceKm\": 78.4,
                               \"totalDurationMinutes\": 210,
                               \"totalScore\": 72.0,
                               \"scoreBreakdown\": {
-                                \"sceneryScore\": 24.0,
-                                \"driveScore\": 20.0,
-                                \"diversityScore\": 11.0,
-                                \"routeSmoothnessScore\": 12.0,
-                                \"weatherScore\": 10.0,
-                                \"penaltyScore\": 5.0,
+                                \"themeScore\": 32.0,
+                                \"distanceScore\": 20.0,
+                                \"progressScore\": 12.0,
+                                \"reviewScore\": 8.0,
+                                \"penaltyScore\": 0.0,
                                 \"totalScore\": 72.0,
-                                \"penaltyReasons\": [\"too-long\"]
+                                \"penaltyReasons\": []
                               },
                               \"stops\": [
                                 {
@@ -104,7 +108,19 @@ public class DriveCourseRecommendationController {
                                 }
                               ]
                             }
-                          ]
+                          ],
+                          \"recommendedStops\": [
+                            {
+                              \"name\": \"북악스카이웨이 팔각정\",
+                              \"lat\": 37.5964,
+                              \"lng\": 126.9672,
+                              \"type\": \"전망대\",
+                              \"tags\": [\"야경\", \"전망\"],
+                              \"viewScore\": 0.9,
+                              \"driveSuitability\": 0.8
+                            }
+                          ],
+                          \"generatedAt\": \"2024-10-01T09:29:58\"
                         }
                         """
                 )
@@ -164,10 +180,27 @@ public class DriveCourseRecommendationController {
     public RecommendationResponse recommendDriveCourses(
         @Valid @ParameterObject @ModelAttribute RecommendationRequest request
     ) {
+        log.info(
+            "GET /api/recommendations/drive-courses - originLat={}, originLng={}, destinationLat={}, destinationLng={}, theme={}, durationMinutes={}, maxStops={}",
+            request.originLat(),
+            request.originLng(),
+            request.destinationLat(),
+            request.destinationLng(),
+            request.theme(),
+            request.durationMinutes(),
+            request.maxStops()
+        );
+        if (request.destinationLat() == null || request.destinationLng() == null) {
+            log.warn("drive-courses destination missing - originLat={}, originLng={}",
+                request.originLat(), request.originLng());
+            throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "destination 좌표가 필요합니다.");
+        }
         DriveCourseCommand facadeRequest = new DriveCourseCommand(
             null,
             request.originLat(),
             request.originLng(),
+            request.destinationLat(),
+            request.destinationLng(),
             request.theme(),
             request.durationMinutes(),
             request.maxStops(),

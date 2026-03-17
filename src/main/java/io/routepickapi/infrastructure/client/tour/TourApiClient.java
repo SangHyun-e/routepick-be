@@ -1,27 +1,39 @@
 package io.routepickapi.infrastructure.client.tour;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
+import io.routepickapi.infrastructure.client.tour.dto.TourApiResponse;
+import io.routepickapi.infrastructure.client.tour.dto.TourItem;
+import io.routepickapi.infrastructure.client.tour.dto.TourResponse;
 import java.util.Collections;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 @Slf4j
 @Component
 public class TourApiClient {
+    private final RestClient restClient;
+    private final String serviceKey;
+    private final String mobileOs;
+    private final String mobileApp;
 
-    private static final String BASE_URL = "https://apis.data.go.kr/B551011/KorService1";
-    private static final String MOBILE_OS = "ETC";
-    private static final String MOBILE_APP = "RoutePick";
-
-    private final RestClient restClient = RestClient.create(BASE_URL);
-
-    @Value("${tour.api.service-key:}")
-    private String serviceKey;
+    public TourApiClient(
+        RestClient.Builder builder,
+        @Value("${external.tourapi.base-url}") String baseUrl,
+        @Value("${external.tourapi.service-key:}") String serviceKey,
+        @Value("${external.tourapi.mobile-os:ETC}") String mobileOs,
+        @Value("${external.tourapi.mobile-app:RoutePick}") String mobileApp
+    ) {
+        this.restClient = builder.baseUrl(baseUrl).build();
+        this.serviceKey = serviceKey;
+        this.mobileOs = mobileOs;
+        this.mobileApp = mobileApp;
+    }
 
     public List<TourItem> fetchLocationBased(
         double latitude,
@@ -38,28 +50,40 @@ public class TourApiClient {
         int safeSize = Math.max(1, Math.min(size, 100));
         boolean encodedKey = serviceKey.contains("%");
 
-        TourApiResponse response = restClient.get()
-            .uri(uriBuilder -> {
-                var builder = uriBuilder
-                    .path("/locationBasedList1")
-                    .queryParam("serviceKey", serviceKey)
-                    .queryParam("MobileOS", MOBILE_OS)
-                    .queryParam("MobileApp", MOBILE_APP)
-                    .queryParam("_type", "json")
-                    .queryParam("numOfRows", safeSize)
-                    .queryParam("pageNo", safePage)
-                    .queryParam("mapX", longitude)
-                    .queryParam("mapY", latitude)
-                    .queryParam("radius", safeRadius);
-                if (contentTypeId != null && !contentTypeId.isBlank()) {
-                    builder.queryParam("contentTypeId", contentTypeId);
-                }
-                return builder.build(encodedKey);
-            })
-            .retrieve()
-            .body(TourApiResponse.class);
+        try {
+            TourApiResponse response = restClient.get()
+                .uri(uriBuilder -> {
+                    var builder = uriBuilder
+                    .path("/locationBasedList2")
+                        .queryParam("serviceKey", serviceKey)
+                        .queryParam("MobileOS", mobileOs)
+                        .queryParam("MobileApp", mobileApp)
+                        .queryParam("_type", "json")
+                        .queryParam("numOfRows", safeSize)
+                        .queryParam("pageNo", safePage)
+                        .queryParam("mapX", longitude)
+                        .queryParam("mapY", latitude)
+                        .queryParam("radius", safeRadius);
+                    if (contentTypeId != null && !contentTypeId.isBlank()) {
+                        builder.queryParam("contentTypeId", contentTypeId);
+                    }
+                    return builder.build(encodedKey);
+                })
+                .retrieve()
+                .body(TourApiResponse.class);
 
-        return extractItems(response);
+            return extractItems(response);
+        } catch (RestClientResponseException exception) {
+            log.debug(
+                "Tour API request failed: status={}, body={}",
+                exception.getStatusCode(),
+                exception.getResponseBodyAsString()
+            );
+            return Collections.emptyList();
+        } catch (RestClientException exception) {
+            log.debug("Tour API request failed");
+            return Collections.emptyList();
+        }
     }
 
     private List<TourItem> extractItems(TourApiResponse response) {
@@ -67,7 +91,7 @@ public class TourApiClient {
             return Collections.emptyList();
         }
 
-        Response payload = response.response();
+        TourResponse payload = response.response();
         if (payload.body() == null || payload.body().items() == null) {
             return Collections.emptyList();
         }
@@ -83,33 +107,4 @@ public class TourApiClient {
         }
     }
 
-    public record TourApiResponse(Response response) {
-    }
-
-    public record Response(Body body) {
-    }
-
-    public record Body(Items items) {
-    }
-
-    public record Items(List<TourItem> item) {
-    }
-
-    public record TourItem(
-        String contentid,
-        String contenttypeid,
-        String title,
-        String addr1,
-        String addr2,
-        String mapx,
-        String mapy,
-        String areacode,
-        String sigungucode,
-        String cat1,
-        String cat2,
-        String cat3,
-        String firstimage,
-        @JsonAlias("firstimage2") String firstImage2
-    ) {
-    }
 }

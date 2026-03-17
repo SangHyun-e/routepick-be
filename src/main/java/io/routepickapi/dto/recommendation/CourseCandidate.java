@@ -35,4 +35,16 @@ public record CourseCandidate(
             warnings
         );
     }
+
+    public CourseCandidate withRouteMetrics(double totalDistanceKm, int estimatedMinutes) {
+        return new CourseCandidate(
+            courseId,
+            stops,
+            totalDistanceKm,
+            estimatedMinutes,
+            score,
+            scoreDetail,
+            warnings
+        );
+    }
 }

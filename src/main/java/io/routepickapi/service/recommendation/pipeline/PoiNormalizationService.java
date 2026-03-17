@@ -2,14 +2,12 @@ package io.routepickapi.service.recommendation.pipeline;
 
 import io.routepickapi.domain.poi.Poi;
 import io.routepickapi.dto.place.KakaoPlaceSearchResponse.KakaoPlaceDocument;
-import io.routepickapi.infrastructure.client.overpass.OverpassClient.OverpassElement;
-import io.routepickapi.infrastructure.client.tour.TourApiClient.TourItem;
+import io.routepickapi.infrastructure.client.tour.dto.TourItem;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +28,6 @@ public class PoiNormalizationService {
         List<Poi> results = new ArrayList<>();
         results.addAll(normalizeKakao(bundle.kakaoPlaces()));
         results.addAll(normalizeTour(bundle.tourItems()));
-        results.addAll(normalizeOverpass(bundle.overpassElements()));
 
         log.info("POI 정규화 완료 - count={}", results.size());
         return results;
@@ -127,55 +124,6 @@ public class PoiNormalizationService {
         return results;
     }
 
-    private List<Poi> normalizeOverpass(List<OverpassElement> elements) {
-        if (elements == null) {
-            return List.of();
-        }
-
-        List<Poi> results = new ArrayList<>();
-        for (OverpassElement element : elements) {
-            if (element == null || element.id() <= 0 || element.tags() == null) {
-                continue;
-            }
-
-            Double lat = element.lat();
-            Double lng = element.lon();
-            if (lat == null || lng == null) {
-                continue;
-            }
-
-            Map<String, String> tagsMap = element.tags();
-            String name = tagsMap.getOrDefault("name", "OSM-%d".formatted(element.id()));
-
-            Set<String> tags = new HashSet<>();
-            tags.addAll(extractTag(tagsMap, "tourism"));
-            tags.addAll(extractTag(tagsMap, "natural"));
-            tags.addAll(extractTag(tagsMap, "leisure"));
-            tags.add("osm");
-
-            Duration stayDuration = resolveStayDuration(tags);
-            double viewScore = resolveViewScore(tags) + 0.15;
-            double driveScore = resolveDriveScore(tags) + 0.1;
-
-            results.add(new Poi(
-                "OSM",
-                String.valueOf(element.id()),
-                name,
-                lat,
-                lng,
-                tagsMap.get("tourism"),
-                tags,
-                false,
-                clampScore(viewScore),
-                0.4,
-                stayDuration,
-                clampScore(driveScore)
-            ));
-        }
-
-        return results;
-    }
-
     private Set<String> splitTags(String raw) {
         if (raw == null || raw.isBlank()) {
             return Set.of();
@@ -192,19 +140,6 @@ public class PoiNormalizationService {
         }
 
         return tags;
-    }
-
-    private Set<String> extractTag(Map<String, String> tags, String key) {
-        if (tags == null || key == null) {
-            return Set.of();
-        }
-
-        String value = tags.get(key);
-        if (value == null || value.isBlank()) {
-            return Set.of();
-        }
-
-        return Set.of(value.trim().toLowerCase(Locale.ROOT));
     }
 
     private Duration resolveStayDuration(Set<String> tags) {

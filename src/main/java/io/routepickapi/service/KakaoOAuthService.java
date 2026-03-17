@@ -68,7 +68,7 @@ public class KakaoOAuthService {
         validateConfig();
 
         UriComponentsBuilder builder = UriComponentsBuilder
-            .fromHttpUrl(AUTH_BASE_URL + "/oauth/authorize")
+            .fromUriString(AUTH_BASE_URL + "/oauth/authorize")
             .queryParam("response_type", "code")
             .queryParam("client_id", clientId)
             .queryParam("redirect_uri", redirectUri);
@@ -84,7 +84,7 @@ public class KakaoOAuthService {
         validateLogoutConfig();
 
         return UriComponentsBuilder
-            .fromHttpUrl(AUTH_BASE_URL + "/oauth/logout")
+            .fromUriString(AUTH_BASE_URL + "/oauth/logout")
             .queryParam("client_id", clientId)
             .queryParam("logout_redirect_uri", logoutRedirectUri)
             .build(true)

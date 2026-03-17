@@ -3,11 +3,10 @@ package io.routepickapi.domain.recommendation;
 import java.util.List;
 
 public record ScoreBreakdown(
-    double sceneryScore,
-    double driveScore,
-    double diversityScore,
-    double routeSmoothnessScore,
-    double weatherScore,
+    double themeScore,
+    double distanceScore,
+    double progressScore,
+    double reviewScore,
     double penaltyScore,
     List<String> penaltyReasons
 ) {
@@ -17,6 +16,6 @@ public record ScoreBreakdown(
     }
 
     public double totalScore() {
-        return sceneryScore + driveScore + diversityScore + routeSmoothnessScore + weatherScore - penaltyScore;
+        return themeScore + distanceScore + progressScore + reviewScore - penaltyScore;
     }
 }

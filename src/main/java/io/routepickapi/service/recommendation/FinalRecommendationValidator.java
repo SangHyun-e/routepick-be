@@ -34,7 +34,7 @@ public class FinalRecommendationValidator {
         List<CourseCandidate> courses,
         GeoPoint origin,
         GeoPoint destination,
-        double maxDetourKm
+        RouteMetrics routeMetrics
     ) {
         if (courses == null || courses.isEmpty()) {
             return List.of();
@@ -42,7 +42,7 @@ public class FinalRecommendationValidator {
 
         List<CourseCandidate> valid = new ArrayList<>();
         for (CourseCandidate course : courses) {
-            ValidationResult result = validate(course, origin, destination, maxDetourKm);
+            ValidationResult result = validate(course, origin, destination, routeMetrics);
             if (result.valid()) {
                 valid.add(course.withWarnings(result.warnings()));
             }
@@ -56,16 +56,21 @@ public class FinalRecommendationValidator {
         CourseCandidate course,
         GeoPoint origin,
         GeoPoint destination,
-        double maxDetourKm
+        RouteMetrics routeMetrics
     ) {
         if (course == null || course.stops() == null || course.stops().isEmpty()) {
             return new ValidationResult(false, List.of());
         }
 
         List<String> warnings = new ArrayList<>();
-        double directDistance = GeoUtils.distanceKm(origin, destination);
-        double detour = Math.max(0, course.totalDistanceKm() - directDistance);
-        if (detour > maxDetourKm) {
+        double baseDistance = routeMetrics == null
+            ? GeoUtils.distanceKm(origin, destination)
+            : routeMetrics.baseDistanceKm();
+        double allowedDetour = routeMetrics == null
+            ? 0.0
+            : routeMetrics.maxDetourKm();
+        double detour = Math.max(0, course.totalDistanceKm() - baseDistance);
+        if (allowedDetour > 0 && detour > allowedDetour) {
             return new ValidationResult(false, List.of());
         }
 

@@ -19,7 +19,6 @@ class ScoreBreakdownResponseMapperTest {
             20.0,
             11.0,
             12.0,
-            10.0,
             5.0,
             List.of("too-long")
         );
@@ -28,11 +27,10 @@ class ScoreBreakdownResponseMapperTest {
         ScoreBreakdownResponse response = mapper.map(breakdown);
 
         // then
-        assertThat(response.sceneryScore()).isEqualTo(24.0);
-        assertThat(response.driveScore()).isEqualTo(20.0);
-        assertThat(response.diversityScore()).isEqualTo(11.0);
-        assertThat(response.routeSmoothnessScore()).isEqualTo(12.0);
-        assertThat(response.weatherScore()).isEqualTo(10.0);
+        assertThat(response.themeScore()).isEqualTo(24.0);
+        assertThat(response.distanceScore()).isEqualTo(20.0);
+        assertThat(response.progressScore()).isEqualTo(11.0);
+        assertThat(response.reviewScore()).isEqualTo(12.0);
         assertThat(response.penaltyScore()).isEqualTo(5.0);
         assertThat(response.totalScore()).isEqualTo(breakdown.totalScore());
         assertThat(response.penaltyReasons()).containsExactly("too-long");
@@ -52,7 +50,6 @@ class ScoreBreakdownResponseMapperTest {
     void map_returnsEmptyPenaltyReasons_whenPenaltyReasonsNull() {
         // given
         ScoreBreakdown breakdown = new ScoreBreakdown(
-            10.0,
             10.0,
             10.0,
             10.0,

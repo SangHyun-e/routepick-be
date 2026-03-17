@@ -1,6 +1,7 @@
 package io.routepickapi.service.recommendation.pipeline;
 
 import io.routepickapi.domain.course.Course;
+import io.routepickapi.domain.poi.Poi;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -13,6 +14,7 @@ public record DriveCourseResult(
     double originLng,
     LocalDateTime departureTime,
     List<Course> courses,
+    List<Poi> recommendedStops,
     LocalDateTime generatedAt
 ) {
 }

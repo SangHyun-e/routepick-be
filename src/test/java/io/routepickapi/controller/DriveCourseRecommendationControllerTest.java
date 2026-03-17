@@ -34,6 +34,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(DriveCourseRecommendationController.class)
 @AutoConfigureMockMvc(addFilters = false)
+@SuppressWarnings("removal")
 class DriveCourseRecommendationControllerTest {
 
     private static final String BASE_URL = "/api/recommendations/drive-courses";
@@ -69,6 +70,7 @@ class DriveCourseRecommendationControllerTest {
             126.9780,
             departure,
             List.of(),
+            List.of(),
             generated
         );
         RecommendationResponse response = sampleResponse(departure, generated);
@@ -79,6 +81,8 @@ class DriveCourseRecommendationControllerTest {
         mockMvc.perform(get(BASE_URL)
                 .param("originLat", "37.5665")
                 .param("originLng", "126.9780")
+                .param("destinationLat", "37.45")
+                .param("destinationLng", "127.02")
                 .param("theme", "coastal")
                 .param("durationMinutes", "180")
                 .param("departureTime", departure.toString())
@@ -102,6 +106,8 @@ class DriveCourseRecommendationControllerTest {
         DriveCourseCommand command = captor.getValue();
         assertThat(command.originLat()).isEqualTo(37.5665);
         assertThat(command.originLng()).isEqualTo(126.9780);
+        assertThat(command.destinationLat()).isEqualTo(37.45);
+        assertThat(command.destinationLng()).isEqualTo(127.02);
         assertThat(command.theme()).isEqualTo("coastal");
         assertThat(command.durationMinutes()).isEqualTo(180);
         assertThat(command.maxStops()).isEqualTo(3);
@@ -113,7 +119,9 @@ class DriveCourseRecommendationControllerTest {
     void driveCourseRecommendation_returnsBadRequest_forInvalidOriginLat() throws Exception {
         mockMvc.perform(get(BASE_URL)
                 .param("originLat", "120")
-                .param("originLng", "126.9780"))
+                .param("originLng", "126.9780")
+                .param("destinationLat", "37.45")
+                .param("destinationLng", "127.02"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("CMN-001"))
             .andExpect(jsonPath("$.errors[0].field").value("originLat"));
@@ -125,7 +133,9 @@ class DriveCourseRecommendationControllerTest {
     void driveCourseRecommendation_returnsBadRequest_forInvalidOriginLng() throws Exception {
         mockMvc.perform(get(BASE_URL)
                 .param("originLat", "37.5665")
-                .param("originLng", "220"))
+                .param("originLng", "220")
+                .param("destinationLat", "37.45")
+                .param("destinationLng", "127.02"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("CMN-001"))
             .andExpect(jsonPath("$.errors[0].field").value("originLng"));
@@ -138,6 +148,8 @@ class DriveCourseRecommendationControllerTest {
         mockMvc.perform(get(BASE_URL)
                 .param("originLat", "37.5665")
                 .param("originLng", "126.9780")
+                .param("destinationLat", "37.45")
+                .param("destinationLng", "127.02")
                 .param("durationMinutes", "10"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.status").value(400))
@@ -156,6 +168,8 @@ class DriveCourseRecommendationControllerTest {
         mockMvc.perform(get(BASE_URL)
                 .param("originLat", "37.5665")
                 .param("originLng", "126.9780")
+                .param("destinationLat", "37.45")
+                .param("destinationLng", "127.02")
                 .param("maxStops", "5"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("CMN-001"))
@@ -167,14 +181,13 @@ class DriveCourseRecommendationControllerTest {
 
     private RecommendationResponse sampleResponse(LocalDateTime departure, LocalDateTime generated) {
         ScoreBreakdownResponse breakdown = new ScoreBreakdownResponse(
-            24.0,
+            32.0,
             20.0,
-            11.0,
             12.0,
-            10.0,
-            5.0,
+            8.0,
+            0.0,
             72.0,
-            List.of("too-long")
+            List.of()
         );
         CourseStopResponse stop = new CourseStopResponse(
             0,
@@ -193,6 +206,8 @@ class DriveCourseRecommendationControllerTest {
             null,
             "서울특별시 중구",
             "coastal",
+            "야경 드라이브 추천 코스",
+            "북한산 전망대을(를) 들러 이동합니다.",
             78.4,
             210,
             72.0,
@@ -206,6 +221,7 @@ class DriveCourseRecommendationControllerTest {
             126.9780,
             departure,
             List.of(course),
+            List.of(),
             generated
         );
     }

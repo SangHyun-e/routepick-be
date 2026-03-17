@@ -19,6 +19,8 @@ public record RecommendationResponse(
     LocalDateTime departureTime,
     @Schema(description = "추천 코스 목록")
     List<CourseSummaryResponse> courses,
+    @Schema(description = "추천 경유지 목록")
+    List<RecommendedStopResponse> recommendedStops,
     @Schema(description = "추천 생성 시각", example = "2024-10-01T09:29:58")
     LocalDateTime generatedAt
 ) {

@@ -1,28 +1,38 @@
 package io.routepickapi.infrastructure.client.routing;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
+import io.routepickapi.infrastructure.client.routing.dto.Coordinate;
+import io.routepickapi.infrastructure.client.routing.dto.DirectionsRequest;
+import io.routepickapi.infrastructure.client.routing.dto.DirectionsResponse;
+import io.routepickapi.infrastructure.client.routing.dto.MatrixRequest;
+import io.routepickapi.infrastructure.client.routing.dto.MatrixResponse;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 @Slf4j
 @Component
 public class RoutingClient {
+    private final RestClient restClient;
+    private final String apiKey;
+    private final String profile;
 
-    private static final String BASE_URL = "https://api.openrouteservice.org";
-
-    private final RestClient restClient = RestClient.create(BASE_URL);
-
-    @Value("${routing.api-key:}")
-    private String apiKey;
-
-    @Value("${routing.profile:driving-car}")
-    private String profile;
+    public RoutingClient(
+        RestClient.Builder builder,
+        @Value("${external.routing.base-url}") String baseUrl,
+        @Value("${external.routing.api-key:}") String apiKey,
+        @Value("${external.routing.profile:driving-car}") String profile
+    ) {
+        this.restClient = builder.baseUrl(baseUrl).build();
+        this.apiKey = apiKey;
+        this.profile = profile;
+    }
 
     public MatrixResponse fetchMatrix(List<Coordinate> coordinates) {
         validateApiKey();
@@ -39,12 +49,24 @@ public class RoutingClient {
             "km"
         );
 
-        return restClient.post()
-            .uri("/v2/matrix/" + profile)
-            .header(HttpHeaders.AUTHORIZATION, apiKey)
-            .body(request)
-            .retrieve()
-            .body(MatrixResponse.class);
+        try {
+            return restClient.post()
+                .uri("/v2/matrix/" + profile)
+                .header(HttpHeaders.AUTHORIZATION, apiKey)
+                .body(request)
+                .retrieve()
+                .body(MatrixResponse.class);
+        } catch (RestClientResponseException exception) {
+            log.warn(
+                "Routing API matrix failed: status={}, body={}",
+                exception.getStatusCode(),
+                exception.getResponseBodyAsString()
+            );
+            return new MatrixResponse(List.of(), List.of());
+        } catch (RestClientException exception) {
+            log.warn("Routing API matrix failed");
+            return new MatrixResponse(List.of(), List.of());
+        }
     }
 
     public DirectionsResponse fetchDirections(List<Coordinate> coordinates) {
@@ -60,12 +82,24 @@ public class RoutingClient {
                 .toList()
         );
 
-        return restClient.post()
-            .uri("/v2/directions/" + profile)
-            .header(HttpHeaders.AUTHORIZATION, apiKey)
-            .body(request)
-            .retrieve()
-            .body(DirectionsResponse.class);
+        try {
+            return restClient.post()
+                .uri("/v2/directions/" + profile)
+                .header(HttpHeaders.AUTHORIZATION, apiKey)
+                .body(request)
+                .retrieve()
+                .body(DirectionsResponse.class);
+        } catch (RestClientResponseException exception) {
+            log.warn(
+                "Routing API directions failed: status={}, body={}",
+                exception.getStatusCode(),
+                exception.getResponseBodyAsString()
+            );
+            return new DirectionsResponse(List.of());
+        } catch (RestClientException exception) {
+            log.warn("Routing API directions failed");
+            return new DirectionsResponse(List.of());
+        }
     }
 
     private void validateApiKey() {
@@ -75,43 +109,4 @@ public class RoutingClient {
         }
     }
 
-    public record Coordinate(double longitude, double latitude) {
-        public Coordinate {
-            if (latitude < -90.0 || latitude > 90.0) {
-                throw new IllegalArgumentException("latitude out of range");
-            }
-            if (longitude < -180.0 || longitude > 180.0) {
-                throw new IllegalArgumentException("longitude out of range");
-            }
-        }
-    }
-
-    public record MatrixRequest(
-        List<List<Double>> locations,
-        List<String> metrics,
-        String units
-    ) {
-    }
-
-    public record MatrixResponse(
-        List<List<Double>> durations,
-        List<List<Double>> distances
-    ) {
-    }
-
-    public record DirectionsRequest(List<List<Double>> coordinates) {
-    }
-
-    public record DirectionsResponse(List<Route> routes) {
-    }
-
-    public record Route(Summary summary) {
-    }
-
-    public record Summary(
-        double distance,
-        double duration,
-        @JsonAlias("way_points") List<Integer> wayPoints
-    ) {
-    }
 }

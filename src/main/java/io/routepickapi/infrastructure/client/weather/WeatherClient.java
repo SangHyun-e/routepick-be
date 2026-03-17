@@ -2,6 +2,9 @@ package io.routepickapi.infrastructure.client.weather;
 
 import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
+import io.routepickapi.infrastructure.client.weather.dto.WeatherApiResponse;
+import io.routepickapi.infrastructure.client.weather.dto.WeatherItem;
+import io.routepickapi.infrastructure.client.weather.dto.WeatherResponse;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -17,15 +20,19 @@ import org.springframework.web.client.RestClientResponseException;
 @Slf4j
 @Component
 public class WeatherClient {
-
-    private static final String BASE_URL = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0";
     private static final int DEFAULT_ROWS = 1000;
     private static final int DEFAULT_PAGE = 1;
+    private final RestClient restClient;
+    private final String serviceKey;
 
-    private final RestClient restClient = RestClient.create(BASE_URL);
-
-    @Value("${weather.kma.service-key:}")
-    private String serviceKey;
+    public WeatherClient(
+        RestClient.Builder builder,
+        @Value("${external.weather.kma.base-url}") String baseUrl,
+        @Value("${external.weather.kma.service-key:}") String serviceKey
+    ) {
+        this.restClient = builder.baseUrl(baseUrl).build();
+        this.serviceKey = serviceKey;
+    }
 
     public List<WeatherItem> fetchUltraShortNow(String baseDate, String baseTime, int nx, int ny) {
         return request("/getUltraSrtNcst", baseDate, baseTime, nx, ny);
@@ -126,27 +133,4 @@ public class WeatherClient {
         }
     }
 
-    public record WeatherApiResponse(WeatherResponse response) {
-    }
-
-    public record WeatherResponse(WeatherHeader header, WeatherBody body) {
-    }
-
-    public record WeatherHeader(String resultCode, String resultMsg) {
-    }
-
-    public record WeatherBody(WeatherItems items) {
-    }
-
-    public record WeatherItems(List<WeatherItem> item) {
-    }
-
-    public record WeatherItem(
-        String category,
-        String obsrValue,
-        String fcstValue,
-        String fcstDate,
-        String fcstTime
-    ) {
-    }
 }

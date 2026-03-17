@@ -26,8 +26,29 @@ app:
     password: ${ADMIN_PASSWORD:}
     nickname: ${ADMIN_NICKNAME:}
 
+external:
+  kakao:
+    base-url: ${KAKAO_API_BASE_URL:https://dapi.kakao.com}
+    api-key: ${KAKAO_REST_API_KEY:}
+  tourapi:
+    base-url: ${TOUR_API_BASE_URL:https://apis.data.go.kr/B551011/KorService2}
+    service-key: ${TOUR_API_KEY:}
+    mobile-os: ${TOUR_API_MOBILE_OS:ETC}
+    mobile-app: ${TOUR_API_MOBILE_APP:RoutePick}
+  overpass:
+    base-url: ${OVERPASS_BASE_URL:https://overpass-api.de}
+    timeout-seconds: ${OVERPASS_TIMEOUT_SECONDS:25}
+    enabled: ${OVERPASS_ENABLED:false}
+  routing:
+    base-url: ${ROUTING_BASE_URL:https://api.openrouteservice.org}
+    api-key: ${ROUTING_API_KEY:}
+    profile: ${ROUTING_PROFILE:driving-car}
+  weather:
+    kma:
+      base-url: ${KMA_BASE_URL:https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0}
+      service-key: ${KMA_SERVICE_KEY:}
+
 kakao:
-  rest-api-key: ${KAKAO_REST_API_KEY:}
   oauth:
     client-id: ${KAKAO_OAUTH_CLIENT_ID:}
     client-secret: ${KAKAO_OAUTH_CLIENT_SECRET:}
@@ -40,10 +61,6 @@ llm:
   model: ${LLM_MODEL:gpt-4o-mini}
   curation:
     daily-limit: ${LLM_CURATION_DAILY_LIMIT:5}
-
-weather:
-  kma:
-    service-key: ${KMA_SERVICE_KEY:}
 
 aws:
   region: ${AWS_REGION:ap-northeast-2}
@@ -71,3 +88,15 @@ logging:
     io.routepickapi: INFO
     org.springframework: INFO
     org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: ERROR
+
+recommendation:
+  cap:
+    kakao: ${RECOMMENDATION_KAKAO_CAP:10}
+    tour: ${RECOMMENDATION_TOUR_CAP:20}
+    overpass: ${RECOMMENDATION_OVERPASS_CAP:0}
+    routing: ${RECOMMENDATION_ROUTING_CAP:5}
+    course-plans: ${RECOMMENDATION_COURSE_PLAN_CAP:3}
+  cache:
+    version: ${RECOMMENDATION_CACHE_VERSION:v1}
+    ttl-seconds: ${RECOMMENDATION_CACHE_TTL_SECONDS:60}
+    short-ttl-seconds: ${RECOMMENDATION_CACHE_SHORT_TTL_SECONDS:10}

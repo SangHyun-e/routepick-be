@@ -3,13 +3,18 @@ package io.routepickapi.service.recommendation.pipeline;
 import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.domain.course.Course;
+import io.routepickapi.domain.course.CourseStop;
 import io.routepickapi.domain.poi.Poi;
+import io.routepickapi.dto.recommendation.GeoPoint;
 import io.routepickapi.infrastructure.client.kakao.KakaoLocalClient;
-import io.routepickapi.infrastructure.client.kakao.KakaoLocalClient.Address;
-import io.routepickapi.infrastructure.client.kakao.KakaoLocalClient.CoordDocument;
-import io.routepickapi.infrastructure.client.kakao.KakaoLocalClient.CoordToAddressResponse;
+import io.routepickapi.infrastructure.client.kakao.dto.KakaoCoordDocument;
+import io.routepickapi.infrastructure.client.kakao.dto.KakaoCoordToAddressResponse;
 import io.routepickapi.infrastructure.client.weather.WeatherClient;
-import io.routepickapi.infrastructure.client.weather.WeatherClient.WeatherItem;
+import io.routepickapi.infrastructure.client.weather.dto.WeatherItem;
+import io.routepickapi.service.recommendation.RecommendationCacheService;
+import io.routepickapi.service.recommendation.RouteCorridor;
+import io.routepickapi.service.recommendation.RouteMetrics;
+import io.routepickapi.service.recommendation.RouteMetricsService;
 import io.routepickapi.weather.GridConverter;
 import io.routepickapi.weather.WeatherBaseTimeCalculator;
 import io.routepickapi.weather.WeatherBaseTimeCalculator.BaseDateTime;
@@ -32,7 +37,18 @@ public class RecommendationFacade {
     private static final int MAX_RADIUS = 25000;
     private static final int RADIUS_PER_MINUTE = 120;
     private static final int DEFAULT_MAX_STOPS = 3;
-    private static final int MAX_COURSE_LIMIT = 30;
+    private static final int DEFAULT_COURSE_LIMIT = 3;
+    private static final int DEFAULT_ROUTING_CANDIDATE_CAP = 12;
+    private static final double MAX_ROUTE_DEVIATION_KM = 3.0;
+    private static final double MAX_DETOUR_MINUTES = 15.0;
+    private static final double COURSE_SIMILARITY_THRESHOLD = 0.75;
+    private static final double COURSE_NAME_SIMILARITY_THRESHOLD = 0.7;
+    private static final List<String> KAKAO_CAFE_KEYWORDS = List.of("카페", "뷰카페");
+    private static final double ORIGIN_CLUSTER_LIMIT_KM = 1.0;
+    private static final double MIN_COURSE_SCORE = 55.0;
+
+    @org.springframework.beans.factory.annotation.Value("${recommendation.cache.version:v1}")
+    private String recommendationCacheVersion;
 
     private final PoiCollectorService poiCollectorService;
     private final PoiNormalizationService poiNormalizationService;
@@ -41,31 +57,87 @@ public class RecommendationFacade {
     private final RouteCalculationService routeCalculationService;
     private final RecommendationScoringService recommendationScoringService;
     private final DriveThemePolicy driveThemePolicy;
+    private final DriveSpotService driveSpotService;
+    private final PoiScoringService poiScoringService;
+    private final PoiThemePolicy poiThemePolicy;
+    private final RoutePathService routePathService;
     private final KakaoLocalClient kakaoLocalClient;
     private final WeatherClient weatherClient;
+    private final RouteMetricsService routeMetricsService;
+    private final RecommendationCacheService cacheService;
     private final WeatherBaseTimeCalculator weatherBaseTimeCalculator = new WeatherBaseTimeCalculator();
     private final GridConverter gridConverter = new GridConverter();
+
+    @org.springframework.beans.factory.annotation.Value("${recommendation.cap.course-plans:3}")
+    private int coursePlanCap;
+
+    @org.springframework.beans.factory.annotation.Value("${recommendation.cap.routing:5}")
+    private int routingCandidateCap;
 
     public DriveCourseResult recommend(DriveCourseCommand command) {
         if (command == null) {
             throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "추천 요청이 비어있습니다.");
         }
 
-        validateCoordinates(command.originLat(), command.originLng());
-
         String requestId = command.requestId() == null || command.requestId().isBlank()
             ? UUID.randomUUID().toString()
             : command.requestId();
+        validateCoordinates(command.originLat(), command.originLng());
+        boolean destinationProvided = command.destinationLat() != null && command.destinationLng() != null;
+        log.info(
+            "RecommendationFacade entry - requestId={}, destinationProvided={}",
+            requestId,
+            destinationProvided
+        );
+        if (!destinationProvided) {
+            log.warn("destination coordinates missing - requestId={}, originLat={}, originLng={}",
+                requestId, command.originLat(), command.originLng());
+            throw new CustomException(ErrorType.COMMON_INVALID_INPUT, "destination 좌표가 필요합니다.");
+        }
+        validateCoordinates(command.destinationLat(), command.destinationLng());
+        log.info("B-structure active - requestId={}, destinationLat={}, destinationLng={}",
+            requestId, command.destinationLat(), command.destinationLng());
+
+        String cacheKey = buildResultCacheKey(command);
+        DriveCourseResult cached = cacheService.getDriveCourseResult(cacheKey);
+        if (cached != null) {
+            log.info("Recommendation cache hit - requestId={}, key={}", requestId, cacheKey);
+            return new DriveCourseResult(
+                requestId,
+                cached.originLat(),
+                cached.originLng(),
+                cached.departureTime(),
+                cached.courses(),
+                cached.recommendedStops(),
+                LocalDateTime.now()
+            );
+        }
+        log.info("Recommendation cache miss - requestId={}, key={}", requestId, cacheKey);
         LocalDateTime departureTime = command.departureTime() == null
             ? LocalDateTime.now()
             : command.departureTime();
         boolean weatherAware = command.weatherAware() == null || command.weatherAware();
 
-        double centerLat = command.originLat();
-        double centerLng = command.originLng();
         int radius = resolveRadius(command.durationMinutes());
         int maxStops = sanitizeMaxStops(command.maxStops());
+        DriveTheme themeType = DriveTheme.fromRaw(command.theme());
         String theme = driveThemePolicy.resolve(command.theme());
+        GeoPoint originPoint = new GeoPoint(command.originLng(), command.originLat());
+        GeoPoint destinationPoint = new GeoPoint(command.destinationLng(), command.destinationLat());
+        RouteMetrics routeMetrics = routeMetricsService.buildMetrics(originPoint, destinationPoint, MAX_ROUTE_DEVIATION_KM);
+        RouteCorridor corridor = new RouteCorridor(originPoint, destinationPoint, routeMetrics);
+        io.routepickapi.service.recommendation.RoutePath routePath = routePathService.resolvePath(
+            originPoint,
+            destinationPoint
+        );
+        DriveSpotService.DriveSpotStats driveSpotStats = driveSpotService.fetchStats("nature");
+        log.info(
+            "DriveSpot stats - requestId={}, total={}, active={}, activeNature={}",
+            requestId,
+            driveSpotStats.total(),
+            driveSpotStats.active(),
+            driveSpotStats.activeTheme()
+        );
 
         log.info(
             "추천 요청 시작 - requestId={}, originLat={}, originLng={}, theme={}, durationMinutes={}, maxStops={}, weatherAware={}",
@@ -77,65 +149,180 @@ public class RecommendationFacade {
             maxStops,
             weatherAware
         );
-
-        PoiCollectionRequest collectionRequest = new PoiCollectionRequest(
-            centerLat,
-            centerLng,
-            radius,
-            null,
-            null
-        );
-
-        RawPoiBundle rawPoiBundle = poiCollectorService.collect(collectionRequest);
-        Map<String, Integer> rawCounts = countRawPois(rawPoiBundle);
         log.info(
-            "POI 수집 완료 - requestId={}, kakao={}, tour={}, overpass={}, total={}",
+            "Route corridor metrics - requestId={}, baseDistanceKm={}, baseDurationMinutes={}, corridorRadiusKm={}",
             requestId,
-            rawCounts.get("kakao"),
-            rawCounts.get("tour"),
-            rawCounts.get("overpass"),
-            rawCounts.get("total")
+            routeMetrics.baseDistanceKm(),
+            routeMetrics.baseDurationMinutes(),
+            routeMetrics.corridorRadiusKm()
         );
+
+        List<Poi> curatedPois = driveSpotService.collectActiveSpots();
+        int curatedTotal = curatedPois.size();
+        List<Poi> curatedThemeFiltered = curatedPois.stream()
+            .filter(poi -> poiThemePolicy.isAllowed(poi, themeType))
+            .toList();
+        log.info("Curated theme filter - requestId={}, before={}, after={}",
+            requestId, curatedTotal, curatedThemeFiltered.size());
+        List<Poi> curatedCorridor = filterByCorridor(curatedThemeFiltered, corridor, routeMetrics, requestId);
+        log.info("Curated radius filter - requestId={}, before={}, after={}",
+            requestId, curatedThemeFiltered.size(), curatedCorridor.size());
+        List<Poi> curatedFiltered = poiFilterService.filter(curatedCorridor, DriveTheme.DEFAULT, requestId);
+        log.info("Curated POI 준비 완료 - requestId={}, curated={}, filtered={}",
+            requestId, curatedTotal, curatedFiltered.size());
+
+        int candidateTarget = resolveCap(routingCandidateCap, DEFAULT_ROUTING_CANDIDATE_CAP);
+        int remaining = Math.max(0, candidateTarget - curatedFiltered.size());
+        RawPoiBundle rawPoiBundle = new RawPoiBundle(List.of(), List.of());
+        if (remaining > 0) {
+            PoiCollectionRequest collectionRequest = new PoiCollectionRequest(
+                command.originLat(),
+                command.originLng(),
+                command.destinationLat(),
+                command.destinationLng(),
+                radius,
+                KAKAO_CAFE_KEYWORDS,
+                null
+            );
+
+            rawPoiBundle = poiCollectorService.collect(collectionRequest);
+            Map<String, Integer> rawCounts = countRawPois(rawPoiBundle);
+            log.info(
+                "POI 자동 수집 완료 - requestId={}, kakao={}, tour={}, total={}",
+                requestId,
+                rawCounts.get("kakao"),
+                rawCounts.get("tour"),
+                rawCounts.get("total")
+            );
+        } else {
+            log.info("Curated POI sufficient - requestId={}, candidateTarget={}", requestId, candidateTarget);
+        }
 
         List<Poi> pois = poiNormalizationService.normalize(rawPoiBundle);
-        log.info("POI 정규화 완료 - requestId={}, normalized={}", requestId, pois.size());
+        if (!pois.isEmpty()) {
+            log.info("POI 정규화 완료 - requestId={}, normalized={}", requestId, pois.size());
+        }
 
-        List<Poi> filtered = poiFilterService.filter(pois, requestId);
-        log.info("POI 필터링 완료 - requestId={}, filtered={}", requestId, filtered.size());
+        List<Poi> corridorFiltered = filterByCorridor(pois, corridor, routeMetrics, requestId);
+        List<Poi> combined = new java.util.ArrayList<>();
+        combined.addAll(curatedFiltered);
+        combined.addAll(corridorFiltered);
+        List<Poi> filtered = poiFilterService.filter(combined, themeType, requestId);
+        List<Poi> originFiltered = filterOriginCluster(filtered, originPoint, requestId);
+        if (originFiltered.isEmpty() && !combined.isEmpty()) {
+            log.info("Candidate fallback - requestId={}, reason=empty-after-filters", requestId);
+            List<Poi> relaxedTheme = poiFilterService.filterRelaxed(combined, themeType, requestId);
+            List<Poi> relaxedOrigin = filterOriginCluster(relaxedTheme, originPoint, requestId);
+            originFiltered = relaxedOrigin.isEmpty() ? relaxedTheme : relaxedOrigin;
+        }
+        List<PoiScoringService.ScoredPoi> scoredCandidates = poiScoringService.score(
+            originFiltered,
+            themeType,
+            routeMetrics,
+            routePath
+        );
+        List<Poi> recommendedStops = scoredCandidates.stream()
+            .limit(5)
+            .map(PoiScoringService.ScoredPoi::poi)
+            .toList();
+        List<Poi> cappedCandidates = selectBalancedCandidates(scoredCandidates, candidateTarget);
+        long curatedUsed = cappedCandidates.stream()
+            .filter(poi -> poi != null && "CURATED".equalsIgnoreCase(poi.source()))
+            .count();
+        log.info("POI 필터링 완료 - requestId={}, filtered={}, capped={}, curatedUsed={}",
+            requestId, originFiltered.size(), cappedCandidates.size(), curatedUsed);
 
-        List<CoursePlan> plans = courseGenerationService.generate(filtered, maxStops, MAX_COURSE_LIMIT);
+        int planLimit = resolveCap(coursePlanCap, DEFAULT_COURSE_LIMIT);
+        List<CoursePlan> plans = courseGenerationService.generate(cappedCandidates, maxStops, planLimit);
         log.info("코스 조합 생성 완료 - requestId={}, plans={}", requestId, plans.size());
 
         String region = resolveRegion(command.originLng(), command.originLat());
-        List<Course> courses = routeCalculationService.calculate(plans, region, theme);
-        log.info("경로 계산 완료 - requestId={}, courses={}", requestId, courses.size());
-        WeatherSnapshot weatherSnapshot = resolveWeatherSnapshot(
-            centerLat,
-            centerLng,
-            departureTime,
-            weatherAware
+        List<Course> courses = routeCalculationService.calculate(plans, originPoint, destinationPoint, region, theme);
+        List<Course> routingValidCourses = filterInvalidRouting(courses, requestId);
+        log.info("경로 계산 완료 - requestId={}, courses={}", requestId, routingValidCourses.size());
+        List<Course> scoredCourses = recommendationScoringService.score(
+            routingValidCourses,
+            themeType,
+            routeMetrics,
+            routePath
         );
-        List<Course> scoredCourses = recommendationScoringService.score(courses, weatherSnapshot);
-        List<Course> finalCourses = applyDurationFilter(scoredCourses, command.durationMinutes());
-        int removedByDuration = scoredCourses.size() - finalCourses.size();
+        List<Course> durationFiltered = applyDurationFilter(scoredCourses, command.durationMinutes());
+        List<Course> finalCourses = selectDiverseCourses(durationFiltered, planLimit);
+        int removedByDuration = scoredCourses.size() - durationFiltered.size();
         if (removedByDuration > 0) {
             log.info(
                 "코스 필터링 완료 - requestId={}, removedByDuration={}, remaining={}",
                 requestId,
                 removedByDuration,
+                durationFiltered.size()
+            );
+        }
+        int removedByDiversity = durationFiltered.size() - finalCourses.size();
+        if (removedByDiversity > 0) {
+            log.info(
+                "중복/유사 코스 제거 - requestId={}, removedByDuplicate={}, remaining={}",
+                requestId,
+                removedByDiversity,
                 finalCourses.size()
             );
         }
 
         log.info("추천 파이프라인 완료 - requestId={}, finalCourses={}", requestId, finalCourses.size());
-        return new DriveCourseResult(
+        DriveCourseResult result = new DriveCourseResult(
             requestId,
             command.originLat(),
             command.originLng(),
             departureTime,
             finalCourses,
+            recommendedStops,
             LocalDateTime.now()
         );
+        cacheResult(cacheKey, result, finalCourses, requestId);
+        return result;
+    }
+
+    private void cacheResult(String cacheKey, DriveCourseResult result, List<Course> courses, String requestId) {
+        if (courses == null || courses.isEmpty()) {
+            log.info("Recommendation cache skip - requestId={}, reason=empty_result", requestId);
+            return;
+        }
+
+        boolean fallbackOnly = isFallbackOnly(courses);
+        boolean lowQuality = isLowQuality(courses);
+        String reason = "normal";
+        java.time.Duration ttl = cacheService.resultTtl();
+        if (fallbackOnly) {
+            reason = "fallback_only";
+            ttl = cacheService.shortResultTtl();
+        } else if (lowQuality) {
+            reason = "low_quality";
+            ttl = cacheService.shortResultTtl();
+        }
+        cacheService.putDriveCourseResult(cacheKey, result, ttl);
+        log.info("Recommendation cache save - requestId={}, reason={}, ttlSeconds={}",
+            requestId, reason, ttl.toSeconds());
+    }
+
+    private boolean isFallbackOnly(List<Course> courses) {
+        if (courses == null || courses.isEmpty()) {
+            return false;
+        }
+        return courses.stream().allMatch(course ->
+            course != null
+                && course.stops() != null
+                && !course.stops().isEmpty()
+                && course.stops().stream().allMatch(CourseStop::routingEstimated)
+        );
+    }
+
+    private boolean isLowQuality(List<Course> courses) {
+        if (courses == null || courses.isEmpty()) {
+            return true;
+        }
+        return courses.stream()
+            .mapToDouble(Course::totalScore)
+            .max()
+            .orElse(0.0) < MIN_COURSE_SCORE;
     }
 
     private int sanitizeMaxStops(Integer maxStops) {
@@ -161,15 +348,89 @@ public class RecommendationFacade {
         int tourCount = rawPoiBundle == null || rawPoiBundle.tourItems() == null
             ? 0
             : rawPoiBundle.tourItems().size();
-        int overpassCount = rawPoiBundle == null || rawPoiBundle.overpassElements() == null
-            ? 0
-            : rawPoiBundle.overpassElements().size();
-
         counts.put("kakao", kakaoCount);
         counts.put("tour", tourCount);
-        counts.put("overpass", overpassCount);
-        counts.put("total", kakaoCount + tourCount + overpassCount);
+        counts.put("total", kakaoCount + tourCount);
         return counts;
+    }
+
+    private List<Poi> selectBalancedCandidates(
+        List<PoiScoringService.ScoredPoi> scored,
+        int limit
+    ) {
+        if (scored == null || scored.isEmpty()) {
+            return List.of();
+        }
+        int cap = resolveCap(limit, DEFAULT_ROUTING_CANDIDATE_CAP);
+        java.util.Map<Integer, java.util.Deque<PoiScoringService.ScoredPoi>> segments = new java.util.LinkedHashMap<>();
+        java.util.Comparator<PoiScoringService.ScoredPoi> comparator = (left, right) -> {
+            int priority = Integer.compare(right.sourcePriority(), left.sourcePriority());
+            if (priority != 0) {
+                return priority;
+            }
+            return Double.compare(right.totalScore(), left.totalScore());
+        };
+
+        for (int segment = 0; segment < 3; segment++) {
+            int segmentIndex = segment;
+            List<PoiScoringService.ScoredPoi> segmentScores = scored.stream()
+                .filter(item -> item.segmentIndex() == segmentIndex)
+                .sorted(comparator)
+                .toList();
+            segments.put(segment, new java.util.ArrayDeque<>(segmentScores));
+        }
+
+        List<Poi> selected = new java.util.ArrayList<>();
+        boolean added = true;
+        while (selected.size() < cap && added) {
+            added = false;
+            for (int segment = 0; segment < 3; segment++) {
+                java.util.Deque<PoiScoringService.ScoredPoi> queue = segments.get(segment);
+                if (queue == null || queue.isEmpty()) {
+                    continue;
+                }
+                if (selected.size() >= cap) {
+                    break;
+                }
+                selected.add(queue.pollFirst().poi());
+                added = true;
+            }
+        }
+
+        if (selected.size() < cap) {
+            List<PoiScoringService.ScoredPoi> remaining = new java.util.ArrayList<>();
+            segments.values().forEach(remaining::addAll);
+            remaining.stream()
+                .sorted(comparator)
+                .limit(cap - selected.size())
+                .map(PoiScoringService.ScoredPoi::poi)
+                .forEach(selected::add);
+        }
+        return selected;
+    }
+
+    private int resolveCap(int value, int fallback) {
+        return value > 0 ? value : fallback;
+    }
+
+    private String buildResultCacheKey(DriveCourseCommand command) {
+        return "drive-course:"
+            + safeKey(recommendationCacheVersion)
+            + ":"
+            + String.format("%.5f,%.5f", command.originLat(), command.originLng())
+            + ":"
+            + String.format("%.5f,%.5f", command.destinationLat(), command.destinationLng())
+            + ":theme=" + safeKey(command.theme())
+            + ":duration=" + command.durationMinutes()
+            + ":maxStops=" + command.maxStops()
+            + ":weather=" + command.weatherAware();
+    }
+
+    private String safeKey(String value) {
+        if (value == null) {
+            return "none";
+        }
+        return value.replace(" ", "");
     }
 
     private void validateCoordinates(double lat, double lng) {
@@ -179,12 +440,12 @@ public class RecommendationFacade {
     }
 
     private String resolveRegion(double longitude, double latitude) {
-        CoordToAddressResponse response = kakaoLocalClient.coordToAddress(longitude, latitude);
+        KakaoCoordToAddressResponse response = kakaoLocalClient.coordToAddress(longitude, latitude);
         if (response == null || response.documents() == null || response.documents().isEmpty()) {
             return "UNKNOWN";
         }
 
-        CoordDocument document = response.documents().getFirst();
+        KakaoCoordDocument document = response.documents().getFirst();
         if (document.roadAddress() != null) {
             return buildRegion(document.roadAddress().region1DepthName(), document.roadAddress().region2DepthName());
         }
@@ -199,9 +460,9 @@ public class RecommendationFacade {
             return "UNKNOWN";
         }
         if (region2 == null || region2.isBlank()) {
-            return region1;
+            return region1 + " 인근";
         }
-        return region1 + " " + region2;
+        return region1 + " " + region2 + " 인근";
     }
 
     private WeatherSnapshot resolveWeatherSnapshot(
@@ -238,6 +499,227 @@ public class RecommendationFacade {
         }
 
         return filtered;
+    }
+
+    private List<Course> filterInvalidRouting(List<Course> courses, String requestId) {
+        if (courses == null || courses.isEmpty()) {
+            return List.of();
+        }
+
+        List<Course> valid = courses.stream()
+            .filter(this::isValidRoutingCourse)
+            .toList();
+
+        int removed = courses.size() - valid.size();
+        if (removed > 0) {
+            log.info("Routing 실패 코스 제거 - requestId={}, removed={}, remaining={}",
+                requestId, removed, valid.size());
+        }
+        return valid;
+    }
+
+    private boolean isValidRoutingCourse(Course course) {
+        if (course == null || course.totalDistanceKm() <= 1.0) {
+            return false;
+        }
+        if (course.stops() == null || course.stops().isEmpty()) {
+            return false;
+        }
+        for (CourseStop stop : course.stops()) {
+            if (stop == null) {
+                return false;
+            }
+            if (stop.order() > 0 && stop.segmentDuration().isZero()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private List<Course> selectDiverseCourses(List<Course> courses, int limit) {
+        if (courses == null || courses.isEmpty()) {
+            return List.of();
+        }
+
+        int cap = resolveCap(limit, DEFAULT_COURSE_LIMIT);
+        List<Course> selected = new java.util.ArrayList<>();
+        for (Course course : courses) {
+            if (course == null || course.stops() == null) {
+                continue;
+            }
+            if (course.totalScore() < MIN_COURSE_SCORE) {
+                continue;
+            }
+            if (selected.size() >= cap) {
+                break;
+            }
+            if (isSimilarCourse(course, selected)) {
+                continue;
+            }
+            selected.add(course);
+        }
+        if (selected.isEmpty() && !courses.isEmpty()) {
+            selected.add(courses.getFirst());
+        }
+        return selected;
+    }
+
+    private List<Poi> filterOriginCluster(List<Poi> pois, GeoPoint origin, String requestId) {
+        if (pois == null || pois.isEmpty()) {
+            return List.of();
+        }
+        if (origin == null) {
+            return pois;
+        }
+        List<Poi> filtered = new java.util.ArrayList<>();
+        int removed = 0;
+        for (Poi poi : pois) {
+            if (poi == null) {
+                continue;
+            }
+            GeoPoint point = new GeoPoint(poi.lng(), poi.lat());
+            double distance = io.routepickapi.service.recommendation.GeoUtils.distanceKm(origin, point);
+            if (distance < ORIGIN_CLUSTER_LIMIT_KM) {
+                removed++;
+                continue;
+            }
+            filtered.add(poi);
+        }
+        if (removed > 0) {
+            log.info("Origin cluster removed - requestId={}, removed={}, remaining={}",
+                requestId, removed, filtered.size());
+        }
+        return filtered;
+    }
+
+    private boolean isSimilarCourse(Course candidate, List<Course> selected) {
+        if (candidate == null || candidate.stops() == null || selected == null) {
+            return false;
+        }
+        java.util.Set<String> candidateStops = buildStopKeys(candidate);
+        java.util.Set<String> candidateNames = buildStopNames(candidate);
+
+        for (Course existing : selected) {
+            if (existing == null || existing.stops() == null) {
+                continue;
+            }
+            double stopOverlap = overlapRatio(candidateStops, buildStopKeys(existing));
+            if (stopOverlap >= COURSE_SIMILARITY_THRESHOLD) {
+                return true;
+            }
+            double nameOverlap = overlapRatio(candidateNames, buildStopNames(existing));
+            if (nameOverlap >= COURSE_NAME_SIMILARITY_THRESHOLD) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private java.util.Set<String> buildStopKeys(Course course) {
+        java.util.Set<String> keys = new java.util.HashSet<>();
+        if (course == null || course.stops() == null) {
+            return keys;
+        }
+        for (CourseStop stop : course.stops()) {
+            String key = stopKey(stop);
+            if (!key.isBlank()) {
+                keys.add(key);
+            }
+        }
+        return keys;
+    }
+
+    private java.util.Set<String> buildStopNames(Course course) {
+        java.util.Set<String> names = new java.util.HashSet<>();
+        if (course == null || course.stops() == null) {
+            return names;
+        }
+        for (CourseStop stop : course.stops()) {
+            if (stop == null || stop.poi() == null || stop.poi().name() == null) {
+                continue;
+            }
+            String name = stop.poi().name().trim().toLowerCase(java.util.Locale.ROOT);
+            if (!name.isBlank()) {
+                names.add(name);
+            }
+        }
+        return names;
+    }
+
+    private double overlapRatio(java.util.Set<String> left, java.util.Set<String> right) {
+        if (left == null || right == null || left.isEmpty() || right.isEmpty()) {
+            return 0.0;
+        }
+        int overlap = 0;
+        for (String value : left) {
+            if (right.contains(value)) {
+                overlap++;
+            }
+        }
+        return overlap / (double) Math.min(left.size(), right.size());
+    }
+
+    private String stopKey(CourseStop stop) {
+        if (stop == null || stop.poi() == null) {
+            return "";
+        }
+        String name = stop.poi().name() == null ? "" : stop.poi().name().trim().toLowerCase(java.util.Locale.ROOT);
+        long latKey = Math.round(stop.poi().lat() * 100000);
+        long lngKey = Math.round(stop.poi().lng() * 100000);
+        return name + "|" + latKey + "|" + lngKey;
+    }
+
+    private List<Poi> filterByCorridor(
+        List<Poi> pois,
+        RouteCorridor corridor,
+        RouteMetrics routeMetrics,
+        String requestId
+    ) {
+        if (pois == null || pois.isEmpty()) {
+            return List.of();
+        }
+
+        List<Poi> filtered = new java.util.ArrayList<>();
+        int removed = 0;
+        for (Poi poi : pois) {
+            if (poi == null) {
+                removed++;
+                continue;
+            }
+            GeoPoint point = new GeoPoint(poi.lng(), poi.lat());
+            if (!corridor.contains(point)) {
+                removed++;
+                continue;
+            }
+            double deviationKm = estimateDetourKm(routeMetrics, corridor.origin(), corridor.destination(), point);
+            double delayMinutes = estimateDelayMinutes(routeMetrics, deviationKm);
+            if (deviationKm > MAX_ROUTE_DEVIATION_KM || delayMinutes > MAX_DETOUR_MINUTES) {
+                removed++;
+                continue;
+            }
+            filtered.add(poi);
+        }
+
+        if (removed > 0) {
+            log.info("Route corridor filter - requestId={}, removed={}, remaining={}",
+                requestId, removed, filtered.size());
+        }
+        return filtered;
+    }
+
+    private double estimateDetourKm(RouteMetrics routeMetrics, GeoPoint origin, GeoPoint destination, GeoPoint point) {
+        double direct = routeMetrics.baseDistanceKm();
+        double detour = io.routepickapi.service.recommendation.GeoUtils.distanceKm(origin, point)
+            + io.routepickapi.service.recommendation.GeoUtils.distanceKm(point, destination) - direct;
+        return Math.max(0.0, detour);
+    }
+
+    private double estimateDelayMinutes(RouteMetrics routeMetrics, double detourKm) {
+        if (detourKm <= 0) {
+            return 0.0;
+        }
+        double detourMinutes = io.routepickapi.service.recommendation.GeoUtils.estimateMinutes(detourKm);
+        return Math.max(0.0, detourMinutes);
     }
 
     private WeatherSnapshot buildWeatherSnapshot(List<WeatherItem> items) {

@@ -34,6 +34,20 @@ public record RecommendationRequest(
     @DecimalMax(value = "180.0", message = "originLng는 180 이하이어야 합니다.")
     Double originLng,
 
+    /** 도착 위도 (필수, -90~90 범위). */
+    @Parameter(description = "도착 위도", example = "37.4500", required = true)
+    @Schema(description = "도착 위도", example = "37.4500")
+    @DecimalMin(value = "-90.0", message = "destinationLat는 -90 이상이어야 합니다.")
+    @DecimalMax(value = "90.0", message = "destinationLat는 90 이하이어야 합니다.")
+    Double destinationLat,
+
+    /** 도착 경도 (필수, -180~180 범위). */
+    @Parameter(description = "도착 경도", example = "127.0200", required = true)
+    @Schema(description = "도착 경도", example = "127.0200")
+    @DecimalMin(value = "-180.0", message = "destinationLng는 -180 이상이어야 합니다.")
+    @DecimalMax(value = "180.0", message = "destinationLng는 180 이하이어야 합니다.")
+    Double destinationLng,
+
     /**
      * 추천 테마 (한글/영문/숫자/공백/하이픈 허용, 최대 30자).
      */

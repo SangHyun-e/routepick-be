@@ -18,15 +18,19 @@ import org.springframework.web.client.RestClientResponseException;
 @Slf4j
 @Repository
 public class KmaWeatherRepository implements WeatherRepository {
-
-    private static final String BASE_URL = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0";
     private static final int DEFAULT_ROWS = 1000;
     private static final int DEFAULT_PAGE = 1;
+    private final RestClient restClient;
 
-    private final RestClient restClient = RestClient.create(BASE_URL);
-
-    @Value("${weather.kma.service-key:}")
+    @Value("${external.weather.kma.service-key:}")
     private String serviceKey;
+
+    public KmaWeatherRepository(
+        RestClient.Builder builder,
+        @Value("${external.weather.kma.base-url}") String baseUrl
+    ) {
+        this.restClient = builder.baseUrl(baseUrl).build();
+    }
 
     @Override
     public List<WeatherItem> fetchUltraShortNow(

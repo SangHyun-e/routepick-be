@@ -13,11 +13,14 @@ import org.junit.jupiter.api.Test;
 
 class RecommendationResponseMapperTest {
 
+    private final PoiTagLabelMapper tagLabelMapper = new PoiTagLabelMapper();
+
     private final RecommendationResponseMapper mapper = new RecommendationResponseMapper(
         new CourseSummaryResponseMapper(
-            new CourseStopResponseMapper(),
+            new CourseStopResponseMapper(tagLabelMapper),
             new ScoreBreakdownResponseMapper()
-        )
+        ),
+        new RecommendedStopResponseMapper(tagLabelMapper)
     );
 
     @Test
@@ -31,7 +34,7 @@ class RecommendationResponseMapperTest {
             Duration.ofMinutes(120),
             50.0,
             List.of(),
-            new ScoreBreakdown(10, 10, 10, 10, 10, 0, null),
+            new ScoreBreakdown(10, 10, 10, 10, 0, null),
             null
         );
         LocalDateTime departure = LocalDateTime.of(2024, 10, 1, 9, 30);
@@ -42,6 +45,7 @@ class RecommendationResponseMapperTest {
             126.9780,
             departure,
             List.of(course),
+            List.of(),
             generated
         );
 
@@ -62,6 +66,7 @@ class RecommendationResponseMapperTest {
             37.5665,
             126.9780,
             LocalDateTime.of(2024, 10, 1, 9, 30),
+            List.of(),
             List.of(),
             LocalDateTime.of(2024, 10, 1, 9, 29, 58)
         );

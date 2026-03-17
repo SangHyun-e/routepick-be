@@ -9,6 +9,8 @@ public record DriveCourseCommand(
     String requestId,
     double originLat,
     double originLng,
+    Double destinationLat,
+    Double destinationLng,
     String theme,
     Integer durationMinutes,
     Integer maxStops,

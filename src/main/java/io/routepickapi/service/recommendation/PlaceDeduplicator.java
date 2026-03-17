@@ -23,14 +23,24 @@ public class PlaceDeduplicator {
             if (candidate == null) {
                 continue;
             }
-            byName.putIfAbsent(candidate.normalizedName(), candidate);
+            CandidatePlace existing = byName.get(candidate.normalizedName());
+            if (existing == null || isPreferred(candidate, existing)) {
+                byName.put(candidate.normalizedName(), candidate);
+            }
         }
 
         List<CandidatePlace> result = new ArrayList<>();
         for (CandidatePlace candidate : byName.values()) {
-            boolean nearDuplicate = result.stream()
-                .anyMatch(existing -> distanceKm(existing, candidate) <= DUPLICATE_DISTANCE_KM);
-            if (!nearDuplicate) {
+            CandidatePlace duplicate = result.stream()
+                .filter(existing -> distanceKm(existing, candidate) <= DUPLICATE_DISTANCE_KM)
+                .findFirst()
+                .orElse(null);
+            if (duplicate == null) {
+                result.add(candidate);
+                continue;
+            }
+            if (isPreferred(candidate, duplicate)) {
+                result.remove(duplicate);
                 result.add(candidate);
             }
         }
@@ -42,5 +52,14 @@ public class PlaceDeduplicator {
         GeoPoint start = new GeoPoint(first.x(), first.y());
         GeoPoint end = new GeoPoint(second.x(), second.y());
         return GeoUtils.distanceKm(start, end);
+    }
+
+    private boolean isPreferred(CandidatePlace candidate, CandidatePlace other) {
+        int candidatePriority = candidate.source() == null ? 0 : candidate.source().priority();
+        int otherPriority = other.source() == null ? 0 : other.source().priority();
+        if (candidatePriority != otherPriority) {
+            return candidatePriority > otherPriority;
+        }
+        return candidate.safeTags().size() > other.safeTags().size();
     }
 }
