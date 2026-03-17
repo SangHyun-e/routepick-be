@@ -117,6 +117,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     return;
                 }
                 if (user.getStatus() != UserStatus.ACTIVE) {
+                    if (isPublicRequest(request)) {
+                        log.debug("Inactive user on public endpoint. Skip auth.");
+                        filterChain.doFilter(request, response);
+                        return;
+                    }
                     writeForbiddenResponse(request, response);
                     return;
                 }
@@ -140,6 +145,34 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
+    private boolean isPublicRequest(HttpServletRequest request) {
+        String path = request.getServletPath();
+        String method = request.getMethod();
+
+        if ("POST".equalsIgnoreCase(method) && "/courses/recommend".equals(path)) {
+            return true;
+        }
+        if ("GET".equalsIgnoreCase(method)) {
+            if ("/api/recommendations/drive-courses".equals(path)) {
+                return true;
+            }
+            if ("/weather/drive-message".equals(path)) {
+                return true;
+            }
+            if ("/api/parking/nearby".equals(path)) {
+                return true;
+            }
+            if (path.equals("/posts") || path.startsWith("/posts/")) {
+                return true;
+            }
+            if (path.startsWith("/places/")) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void writeForbiddenResponse(HttpServletRequest request, HttpServletResponse response)
         throws IOException {
         ErrorType errorType = ErrorType.USER_STATUS_INACTIVE;
@@ -154,6 +187,5 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         objectMapper.writeValue(response.getWriter(), body);
     }
-
 
 }
