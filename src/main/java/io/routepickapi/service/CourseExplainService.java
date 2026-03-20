@@ -157,14 +157,15 @@ public class CourseExplainService {
         Map<String, NearbyParkingItemResponse> collected = new LinkedHashMap<>();
 
         stops.stream()
-            .filter(stop -> stop.getX() != 0 && stop.getY() != 0)
+            .filter(stop -> stop.getLat() != null && stop.getLng() != null)
+            .filter(stop -> stop.getLat() != 0 && stop.getLng() != 0)
             .limit(PARKING_STOP_LIMIT)
             .forEach(stop -> {
                 if (collected.size() >= PARKING_ITEM_LIMIT) {
                     return;
                 }
                 List<NearbyParkingItemResponse> items =
-                    parkingService.findNearby(stop.getY(), stop.getX());
+                    parkingService.findNearby(stop.getLat(), stop.getLng());
                 for (NearbyParkingItemResponse item : items) {
                     if (item == null) {
                         continue;

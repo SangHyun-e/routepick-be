@@ -1,7 +1,11 @@
 package io.routepickapi.entity.course;
 
+import io.routepickapi.common.jpa.StringListConverter;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Embeddable;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -14,33 +18,69 @@ public class CourseRecommendationStop {
     @Column(name = "name", nullable = false, length = 120)
     private String name;
 
-    @Column(name = "address", nullable = false, length = 255)
-    private String address;
+    @Column(name = "lat", nullable = false)
+    private Double lat;
 
-    @Column(name = "x", nullable = false)
-    private double x;
+    @Column(name = "lng", nullable = false)
+    private Double lng;
 
-    @Column(name = "y", nullable = false)
-    private double y;
+    @Column(name = "type", nullable = false, length = 120)
+    private String type;
 
-    @Column(name = "category", nullable = false, length = 120)
-    private String category;
+    @Convert(converter = StringListConverter.class)
+    @Column(name = "tags", columnDefinition = "TEXT")
+    private List<String> tags = new ArrayList<>();
 
-    public CourseRecommendationStop(String name, String address, double x, double y,
-        String category) {
+    @Column(name = "stay_minutes")
+    private Long stayMinutes;
+
+    @Column(name = "view_score")
+    private Double viewScore;
+
+    @Column(name = "drive_suitability")
+    private Double driveSuitability;
+
+    @Column(name = "segment_distance_km")
+    private Double segmentDistanceKm;
+
+    @Column(name = "segment_duration_minutes")
+    private Long segmentDurationMinutes;
+
+    public CourseRecommendationStop(
+        String name,
+        Double lat,
+        Double lng,
+        String type,
+        List<String> tags,
+        Long stayMinutes,
+        Double viewScore,
+        Double driveSuitability,
+        Double segmentDistanceKm,
+        Long segmentDurationMinutes
+    ) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("name required");
         }
-        if (address == null || address.isBlank()) {
-            throw new IllegalArgumentException("address required");
+        if (lat == null) {
+            throw new IllegalArgumentException("lat required");
         }
-        if (category == null || category.isBlank()) {
-            throw new IllegalArgumentException("category required");
+        if (lng == null) {
+            throw new IllegalArgumentException("lng required");
+        }
+        if (type == null || type.isBlank()) {
+            throw new IllegalArgumentException("type required");
         }
         this.name = name;
-        this.address = address;
-        this.x = x;
-        this.y = y;
-        this.category = category;
+        this.lat = lat;
+        this.lng = lng;
+        this.type = type;
+        if (tags != null) {
+            this.tags.addAll(tags);
+        }
+        this.stayMinutes = stayMinutes;
+        this.viewScore = viewScore;
+        this.driveSuitability = driveSuitability;
+        this.segmentDistanceKm = segmentDistanceKm;
+        this.segmentDurationMinutes = segmentDurationMinutes;
     }
 }
