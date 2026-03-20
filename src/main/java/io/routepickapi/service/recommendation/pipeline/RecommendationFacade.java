@@ -5,6 +5,7 @@ import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.domain.course.Course;
 import io.routepickapi.domain.course.CourseStop;
 import io.routepickapi.domain.poi.Poi;
+import io.routepickapi.dto.recommendation.IncludeStopRequest;
 import io.routepickapi.dto.recommendation.GeoPoint;
 import io.routepickapi.infrastructure.client.kakao.KakaoLocalClient;
 import io.routepickapi.infrastructure.client.kakao.dto.KakaoCoordDocument;
@@ -18,10 +19,15 @@ import io.routepickapi.service.recommendation.RouteMetricsService;
 import io.routepickapi.weather.GridConverter;
 import io.routepickapi.weather.WeatherBaseTimeCalculator;
 import io.routepickapi.weather.WeatherBaseTimeCalculator.BaseDateTime;
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +51,13 @@ public class RecommendationFacade {
     private static final List<String> KAKAO_CAFE_KEYWORDS = List.of("카페", "뷰카페");
     private static final double ORIGIN_CLUSTER_LIMIT_KM = 1.0;
     private static final double MIN_COURSE_SCORE = 55.0;
+    private static final int MAX_INCLUDE_STOPS = 3;
+    private static final String INCLUDE_SOURCE = "INCLUDE";
+    private static final String INCLUDE_TAG = "include";
+    private static final double INCLUDE_VIEW_SCORE = 0.4;
+    private static final double INCLUDE_DRIVE_SCORE = 0.4;
+    private static final double INCLUDE_WEATHER_SENSITIVITY = 0.2;
+    private static final int INCLUDE_STAY_MINUTES = 40;
 
     @org.springframework.beans.factory.annotation.Value("${recommendation.cache.version:v1}")
     private String recommendationCacheVersion;
@@ -97,7 +110,8 @@ public class RecommendationFacade {
         log.info("B-structure active - requestId={}, destinationLat={}, destinationLng={}",
             requestId, command.destinationLat(), command.destinationLng());
 
-        String cacheKey = buildResultCacheKey(command);
+        List<IncludeStopRequest> includeStops = normalizeIncludeStops(command.includeStops());
+        String cacheKey = buildResultCacheKey(command, includeStops);
         DriveCourseResult cached = cacheService.getDriveCourseResult(cacheKey);
         if (cached != null) {
             log.info("Recommendation cache hit - requestId={}, key={}", requestId, cacheKey);
@@ -112,6 +126,9 @@ public class RecommendationFacade {
             );
         }
         log.info("Recommendation cache miss - requestId={}, key={}", requestId, cacheKey);
+        if (!includeStops.isEmpty()) {
+            log.info("Include stops applied - requestId={}, count={}", requestId, includeStops.size());
+        }
         LocalDateTime departureTime = command.departureTime() == null
             ? LocalDateTime.now()
             : command.departureTime();
@@ -252,7 +269,13 @@ public class RecommendationFacade {
             requestId, originFiltered.size(), cappedCandidates.size(), curatedUsed);
 
         int planLimit = resolveCap(coursePlanCap, DEFAULT_COURSE_LIMIT);
-        List<CoursePlan> plans = courseGenerationService.generate(cappedCandidates, maxStops, planLimit);
+        List<Poi> includePois = buildIncludePois(includeStops);
+        List<CoursePlan> plans = courseGenerationService.generate(
+            cappedCandidates,
+            includePois,
+            maxStops,
+            planLimit
+        );
         log.info("코스 조합 생성 완료 - requestId={}, plans={}", requestId, plans.size());
 
         String region = resolveRegion(command.originLng(), command.originLat());
@@ -461,7 +484,77 @@ public class RecommendationFacade {
         return value > 0 ? value : fallback;
     }
 
-    private String buildResultCacheKey(DriveCourseCommand command) {
+    private List<IncludeStopRequest> normalizeIncludeStops(List<IncludeStopRequest> includeStops) {
+        if (includeStops == null || includeStops.isEmpty()) {
+            return List.of();
+        }
+        List<IncludeStopRequest> normalized = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (IncludeStopRequest stop : includeStops) {
+            if (stop == null) {
+                continue;
+            }
+            if (stop.lat() == null || stop.lng() == null) {
+                continue;
+            }
+            double lat = stop.lat();
+            double lng = stop.lng();
+            if (lat < -90.0 || lat > 90.0 || lng < -180.0 || lng > 180.0) {
+                continue;
+            }
+            String name = stop.name() == null ? "" : stop.name().trim();
+            if (name.isBlank()) {
+                continue;
+            }
+            String key = includeStopKey(name, lat, lng);
+            if (!seen.add(key)) {
+                continue;
+            }
+            normalized.add(new IncludeStopRequest(name, lat, lng));
+            if (normalized.size() >= MAX_INCLUDE_STOPS) {
+                break;
+            }
+        }
+        return normalized;
+    }
+
+    private String includeStopKey(String name, double lat, double lng) {
+        String normalizedName = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        long latKey = Math.round(lat * 10000);
+        long lngKey = Math.round(lng * 10000);
+        return normalizedName + ":" + latKey + ":" + lngKey;
+    }
+
+    private List<Poi> buildIncludePois(List<IncludeStopRequest> includeStops) {
+        if (includeStops == null || includeStops.isEmpty()) {
+            return List.of();
+        }
+        List<Poi> includePois = new ArrayList<>();
+        for (IncludeStopRequest stop : includeStops) {
+            String name = stop.name().trim();
+            double lat = stop.lat();
+            double lng = stop.lng();
+            String externalId = "include:" + includeStopKey(name, lat, lng);
+            includePois.add(new Poi(
+                INCLUDE_SOURCE,
+                externalId,
+                name,
+                lat,
+                lng,
+                "선택 경유지",
+                Set.of(INCLUDE_TAG),
+                false,
+                INCLUDE_VIEW_SCORE,
+                INCLUDE_WEATHER_SENSITIVITY,
+                Duration.ofMinutes(INCLUDE_STAY_MINUTES),
+                INCLUDE_DRIVE_SCORE
+            ));
+        }
+        return includePois;
+    }
+
+    private String buildResultCacheKey(DriveCourseCommand command, List<IncludeStopRequest> includeStops) {
+        String includeKey = buildIncludeStopsKey(includeStops);
         return "drive-course:"
             + safeKey(recommendationCacheVersion)
             + ":"
@@ -471,7 +564,20 @@ public class RecommendationFacade {
             + ":theme=" + safeKey(command.theme())
             + ":duration=" + command.durationMinutes()
             + ":maxStops=" + command.maxStops()
-            + ":weather=" + command.weatherAware();
+            + ":weather=" + command.weatherAware()
+            + ":include=" + includeKey;
+    }
+
+    private String buildIncludeStopsKey(List<IncludeStopRequest> includeStops) {
+        if (includeStops == null || includeStops.isEmpty()) {
+            return "none";
+        }
+        return includeStops.stream()
+            .map(stop -> safeKey(stop.name())
+                + "@"
+                + String.format("%.5f,%.5f", stop.lat(), stop.lng()))
+            .reduce((first, second) -> first + "|" + second)
+            .orElse("none");
     }
 
     private String safeKey(String value) {

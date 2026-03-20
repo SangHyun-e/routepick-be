@@ -25,14 +25,32 @@ public class CourseGenerationService {
     private static final double SIMILARITY_THRESHOLD = 0.6;
 
     public List<CoursePlan> generate(List<Poi> pois, int maxStops, int limit) {
-        if (pois == null || pois.isEmpty()) {
-            return List.of();
+        return generate(pois, List.of(), maxStops, limit);
+    }
+
+    public List<CoursePlan> generate(List<Poi> pois, List<Poi> includeStops, int maxStops, int limit) {
+        int safeLimit = limit > 0 ? limit : DEFAULT_LIMIT;
+        int safeMaxStops = Math.max(MIN_STOPS, Math.min(maxStops, MAX_STOPS));
+        List<Poi> fixedStops = normalizeFixedStops(includeStops);
+        if (!fixedStops.isEmpty()) {
+            safeMaxStops = Math.max(safeMaxStops, Math.min(MAX_STOPS, fixedStops.size()));
         }
 
-        int safeMaxStops = Math.max(MIN_STOPS, Math.min(maxStops, MAX_STOPS));
-        int safeLimit = limit > 0 ? limit : DEFAULT_LIMIT;
+        List<Poi> candidates = pois == null ? List.of() : buildDiverseCandidates(pois);
+        if (fixedStops.isEmpty()) {
+            if (candidates.isEmpty()) {
+                return List.of();
+            }
+            return generateWithCandidates(candidates, safeMaxStops, safeLimit);
+        }
 
-        List<Poi> candidates = buildDiverseCandidates(pois);
+        return generateWithFixedStops(candidates, fixedStops, safeMaxStops, safeLimit);
+    }
+
+    private List<CoursePlan> generateWithCandidates(List<Poi> candidates, int safeMaxStops, int safeLimit) {
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
 
         List<CoursePlan> plans = new ArrayList<>();
         Map<Integer, Integer> generatedByStops = new LinkedHashMap<>();
@@ -59,6 +77,59 @@ public class CourseGenerationService {
             uniqueFirstStops,
             generatedByStops.getOrDefault(2, 0),
             generatedByStops.getOrDefault(3, 0),
+            safeMaxStops
+        );
+        return plans;
+    }
+
+    private List<CoursePlan> generateWithFixedStops(
+        List<Poi> candidates,
+        List<Poi> fixedStops,
+        int safeMaxStops,
+        int safeLimit
+    ) {
+        List<CoursePlan> plans = new ArrayList<>();
+        Set<String> fixedKeys = fixedStops.stream()
+            .map(this::stopKey)
+            .collect(Collectors.toSet());
+        List<Poi> filteredCandidates = candidates == null
+            ? List.of()
+            : candidates.stream()
+                .filter(poi -> !fixedKeys.contains(stopKey(poi)))
+                .toList();
+
+        int fixedCount = fixedStops.size();
+        for (int stopCount = safeMaxStops; stopCount >= MIN_STOPS; stopCount--) {
+            if (stopCount < fixedCount) {
+                continue;
+            }
+            int requiredAdditional = stopCount - fixedCount;
+            if (requiredAdditional == 0) {
+                List<Poi> combined = List.copyOf(fixedStops);
+                if (!isTooSimilar(combined, plans)) {
+                    plans.add(new CoursePlan(combined));
+                }
+            } else if (!filteredCandidates.isEmpty()) {
+                buildCombinationsWithFixedStops(
+                    filteredCandidates,
+                    requiredAdditional,
+                    0,
+                    new ArrayList<>(),
+                    fixedStops,
+                    plans,
+                    safeLimit
+                );
+            }
+
+            if (plans.size() >= safeLimit) {
+                break;
+            }
+        }
+
+        log.info(
+            "고정 경유지 포함 코스 생성 완료 - count={}, fixedStops={}, maxStops={}",
+            plans.size(),
+            fixedStops.size(),
             safeMaxStops
         );
         return plans;
@@ -181,6 +252,45 @@ public class CourseGenerationService {
         }
     }
 
+    private void buildCombinationsWithFixedStops(
+        List<Poi> candidates,
+        int targetSize,
+        int startIndex,
+        List<Poi> current,
+        List<Poi> fixedStops,
+        List<CoursePlan> results,
+        int limit
+    ) {
+        if (results.size() >= limit) {
+            return;
+        }
+        if (current.size() == targetSize) {
+            List<Poi> combined = new ArrayList<>(fixedStops);
+            combined.addAll(current);
+            if (!isTooSimilar(combined, results)) {
+                results.add(new CoursePlan(List.copyOf(combined)));
+            }
+            return;
+        }
+
+        for (int index = startIndex; index < candidates.size(); index++) {
+            if (results.size() >= limit) {
+                return;
+            }
+            current.add(candidates.get(index));
+            buildCombinationsWithFixedStops(
+                candidates,
+                targetSize,
+                index + 1,
+                current,
+                fixedStops,
+                results,
+                limit
+            );
+            current.remove(current.size() - 1);
+        }
+    }
+
     private double baseScore(Poi poi) {
         return poi.viewScore() + poi.driveSuitability();
     }
@@ -241,6 +351,32 @@ public class CourseGenerationService {
             unique.add(poi);
         }
         return unique;
+    }
+
+    private List<Poi> normalizeFixedStops(List<Poi> includeStops) {
+        if (includeStops == null || includeStops.isEmpty()) {
+            return List.of();
+        }
+        List<Poi> normalized = new ArrayList<>();
+        Set<String> seen = new java.util.LinkedHashSet<>();
+        for (Poi poi : includeStops) {
+            if (poi == null) {
+                continue;
+            }
+            String key = stopKey(poi);
+            if (!seen.add(key)) {
+                continue;
+            }
+            normalized.add(poi);
+        }
+        return normalized;
+    }
+
+    private String stopKey(Poi poi) {
+        if (poi == null) {
+            return "";
+        }
+        return poi.source() + ":" + poi.externalId();
     }
 
     private String firstStopKey(Poi poi) {

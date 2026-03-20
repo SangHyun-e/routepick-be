@@ -181,14 +181,15 @@ public class DriveCourseRecommendationController {
         @Valid @ParameterObject @ModelAttribute RecommendationRequest request
     ) {
         log.info(
-            "GET /api/recommendations/drive-courses - originLat={}, originLng={}, destinationLat={}, destinationLng={}, theme={}, durationMinutes={}, maxStops={}",
+            "GET /api/recommendations/drive-courses - originLat={}, originLng={}, destinationLat={}, destinationLng={}, theme={}, durationMinutes={}, maxStops={}, includeStops={}",
             request.originLat(),
             request.originLng(),
             request.destinationLat(),
             request.destinationLng(),
             request.theme(),
             request.durationMinutes(),
-            request.maxStops()
+            request.maxStops(),
+            request.includeStops() == null ? 0 : request.includeStops().size()
         );
         if (request.destinationLat() == null || request.destinationLng() == null) {
             log.warn("drive-courses destination missing - originLat={}, originLng={}",
@@ -205,7 +206,8 @@ public class DriveCourseRecommendationController {
             request.durationMinutes(),
             request.maxStops(),
             request.departureTime(),
-            request.weatherAware()
+            request.weatherAware(),
+            request.includeStops()
         );
 
         DriveCourseResult result = recommendationFacade.recommend(facadeRequest);
