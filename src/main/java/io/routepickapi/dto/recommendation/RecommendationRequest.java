@@ -11,6 +11,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.springframework.format.annotation.DateTimeFormat;
 
 /**
@@ -84,6 +85,10 @@ public record RecommendationRequest(
     /** 날씨 기반 보정 여부 (기본 true). */
     @Parameter(description = "날씨 기반 보정 사용 여부", example = "true")
     @Schema(description = "날씨 기반 보정 사용 여부", example = "true")
-    Boolean weatherAware
+    Boolean weatherAware,
+
+    @Parameter(description = "코스에 포함할 정차 지점 목록")
+    @Schema(description = "코스에 포함할 정차 지점 목록")
+    List<IncludeStopRequest> includeStops
 ) {
 }
