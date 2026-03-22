@@ -4,7 +4,9 @@ import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.course.CourseRecommendationSaveRequest;
 import io.routepickapi.dto.course.CourseRecommendationSaveResponse;
-import io.routepickapi.dto.course.CourseStopRequest;
+import io.routepickapi.dto.course.SavedCourseIncludeStopRequest;
+import io.routepickapi.dto.course.SavedCourseStopRequest;
+import io.routepickapi.entity.course.CourseRecommendationIncludeStop;
 import io.routepickapi.entity.course.CourseRecommendationSave;
 import io.routepickapi.entity.course.CourseRecommendationStop;
 import io.routepickapi.entity.user.User;
@@ -12,6 +14,7 @@ import io.routepickapi.entity.user.UserStatus;
 import io.routepickapi.repository.CourseRecommendationSaveRepository;
 import io.routepickapi.repository.UserRepository;
 import java.util.List;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -34,18 +37,31 @@ public class CourseRecommendationSaveService {
 
         User user = requireActiveUser(userId);
 
-        List<CourseRecommendationStop> stops = request.stops().stream()
+        List<CourseRecommendationStop> stops = request.selectedStops().stream()
             .map(this::toStop)
             .toList();
+        List<CourseRecommendationIncludeStop> includeStops = request.includeStops() == null
+            ? List.of()
+            : request.includeStops().stream()
+                .map(this::toIncludeStop)
+                .toList();
 
         CourseRecommendationSave save = new CourseRecommendationSave(
             user,
-            request.origin(),
-            request.destination(),
+            sanitizeTitle(request.title()),
             sanitizeTheme(request.theme()),
-            request.routeSummary(),
-            request.explanation(),
-            stops
+            request.originLat(),
+            request.originLng(),
+            request.destinationLat(),
+            request.destinationLng(),
+            request.durationMinutes(),
+            request.maxStops(),
+            request.totalDistanceKm(),
+            request.totalDurationMinutes(),
+            request.description(),
+            request.explainText(),
+            stops,
+            includeStops
         );
 
         CourseRecommendationSave saved = courseRecommendationSaveRepository.save(save);
@@ -76,14 +92,23 @@ public class CourseRecommendationSaveService {
         courseRecommendationSaveRepository.delete(saved);
     }
 
-    private CourseRecommendationStop toStop(CourseStopRequest stop) {
+    private CourseRecommendationStop toStop(SavedCourseStopRequest stop) {
         return new CourseRecommendationStop(
             stop.name(),
-            stop.address(),
-            stop.x(),
-            stop.y(),
-            stop.category()
+            stop.lat(),
+            stop.lng(),
+            stop.type(),
+            normalizeTags(stop.tags()),
+            stop.stayMinutes(),
+            stop.viewScore(),
+            stop.driveSuitability(),
+            stop.segmentDistanceKm(),
+            stop.segmentDurationMinutes()
         );
+    }
+
+    private CourseRecommendationIncludeStop toIncludeStop(SavedCourseIncludeStopRequest stop) {
+        return new CourseRecommendationIncludeStop(stop.name(), stop.lat(), stop.lng());
     }
 
     private String sanitizeTheme(String theme) {
@@ -91,7 +116,25 @@ public class CourseRecommendationSaveService {
             return "서비스 추천";
         }
         String trimmed = theme.trim();
-        return trimmed.length() > 20 ? trimmed.substring(0, 20) : trimmed;
+        return trimmed.length() > 30 ? trimmed.substring(0, 30) : trimmed;
+    }
+
+    private String sanitizeTitle(String title) {
+        if (title == null || title.isBlank()) {
+            return "저장된 코스";
+        }
+        String trimmed = title.trim();
+        return trimmed.length() > 120 ? trimmed.substring(0, 120) : trimmed;
+    }
+
+    private List<String> normalizeTags(List<String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return List.of();
+        }
+        return tags.stream()
+            .filter(tag -> tag != null && !tag.isBlank())
+            .map(String::trim)
+            .collect(Collectors.toList());
     }
 
     private User requireActiveUser(Long userId) {

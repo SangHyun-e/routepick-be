@@ -1,6 +1,7 @@
 package io.routepickapi.service.recommendation;
 
 import io.routepickapi.dto.recommendation.CandidatePlace;
+import io.routepickapi.dto.recommendation.CandidateSource;
 import io.routepickapi.dto.recommendation.FilterDecision;
 import io.routepickapi.service.recommendation.PlaceCategoryClassifier.CategoryDecision;
 import java.util.ArrayList;
@@ -68,36 +69,49 @@ public class PlaceRuleFilter {
         if (place == null) {
             return new FilterDecision(false, List.of(), List.of(), List.of(), List.of("empty_place"));
         }
-
-        CategoryDecision categoryDecision = placeCategoryClassifier.classify(
-            place.categoryGroupCode(),
-            place.categoryName()
-        );
-
+        CandidateSource source = place.source() == null ? CandidateSource.TOURAPI : place.source();
         List<String> keywordHits = matchKeywords(concat(place), KEYWORD_BLACKLIST);
         List<String> ruleFailures = new ArrayList<>();
-
-        if (!categoryDecision.allowed()) {
-            ruleFailures.add("category_not_allowed");
-        }
-
-        if (categoryDecision.allowedByGroup() && categoryDecision.allowlistMatches().isEmpty()) {
-            ruleFailures.add("allowlist_keyword_missing");
-        }
+        List<String> allowMatches = List.of();
+        List<String> blacklistMatches = List.of();
 
         if (!keywordHits.isEmpty()) {
             ruleFailures.add("keyword_blacklist");
         }
 
-        if (!matchesDriveSuitability(place)) {
-            ruleFailures.add("drive_suitability");
+        if (source == CandidateSource.KAKAO) {
+            CategoryDecision categoryDecision = placeCategoryClassifier.classify(
+                place.categoryGroupCode(),
+                place.categoryName()
+            );
+            allowMatches = categoryDecision.allowlistMatches();
+            blacklistMatches = categoryDecision.blacklistMatches();
+            if (!categoryDecision.allowed()) {
+                ruleFailures.add("category_not_allowed");
+            }
+            if (categoryDecision.allowedByGroup() && categoryDecision.allowlistMatches().isEmpty()) {
+                ruleFailures.add("allowlist_keyword_missing");
+            }
+            if (!matchesCafeOrFood(place)) {
+                ruleFailures.add("kakao_not_cafe_food");
+            }
         }
 
-        boolean passed = ruleFailures.isEmpty() && categoryDecision.blacklistMatches().isEmpty();
+        if (source == CandidateSource.OVERPASS && !matchesScenicTags(place)) {
+            ruleFailures.add("overpass_not_scenic");
+        }
+
+        if (source == CandidateSource.TOURAPI
+            && !matchesDriveSuitability(place)
+            && !matchesScenicTags(place)) {
+            ruleFailures.add("tourapi_low_value");
+        }
+
+        boolean passed = ruleFailures.isEmpty() && blacklistMatches.isEmpty();
         return new FilterDecision(
             passed,
-            categoryDecision.allowlistMatches(),
-            categoryDecision.blacklistMatches(),
+            allowMatches,
+            blacklistMatches,
             keywordHits,
             ruleFailures
         );
@@ -108,7 +122,8 @@ public class PlaceRuleFilter {
             safeLower(place.name()),
             safeLower(place.address()),
             safeLower(place.categoryName()),
-            safeLower(place.categoryGroupName())
+            safeLower(place.categoryGroupName()),
+            safeLower(String.join(" ", place.safeTags()))
         );
     }
 
@@ -140,5 +155,20 @@ public class PlaceRuleFilter {
             }
         }
         return false;
+    }
+
+    private boolean matchesCafeOrFood(CandidatePlace place) {
+        String value = concat(place);
+        return value.contains("카페") || value.contains("커피") || value.contains("맛집")
+            || value.contains("식당") || value.contains("레스토랑") || value.contains("음식")
+            || value.contains("브런치") || value.contains("베이커리");
+    }
+
+    private boolean matchesScenicTags(CandidatePlace place) {
+        String value = concat(place);
+        return value.contains("전망") || value.contains("viewpoint")
+            || value.contains("해변") || value.contains("해안") || value.contains("coast")
+            || value.contains("산") || value.contains("peak") || value.contains("자연")
+            || value.contains("natural") || value.contains("scenic") || value.contains("lookout");
     }
 }

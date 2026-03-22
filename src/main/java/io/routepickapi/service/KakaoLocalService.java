@@ -3,7 +3,6 @@ package io.routepickapi.service;
 import io.routepickapi.common.error.CustomException;
 import io.routepickapi.common.error.ErrorType;
 import io.routepickapi.dto.place.KakaoPlaceSearchResponse;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -12,14 +11,18 @@ import org.springframework.web.client.RestClient;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class KakaoLocalService {
+    private final RestClient restClient;
 
-    private static final String BASE_URL = "https://dapi.kakao.com";
-    private final RestClient restClient = RestClient.create(BASE_URL);
-
-    @Value("${kakao.rest-api-key:}")
+    @Value("${external.kakao.api-key:}")
     private String restApiKey;
+
+    public KakaoLocalService(
+        RestClient.Builder builder,
+        @Value("${external.kakao.base-url}") String baseUrl
+    ) {
+        this.restClient = builder.baseUrl(baseUrl).build();
+    }
 
     public KakaoPlaceSearchResponse searchKeyword(String keyword, int page, int size) {
         validateRestApiKey();

@@ -10,36 +10,12 @@ import org.springframework.stereotype.Component;
 public class PlaceCategoryClassifier {
 
     private static final Set<String> ALLOWED_GROUP_CODES = Set.of(
-        "AT4",
         "FD6",
-        "CE7",
-        "CT1"
+        "CE7"
     );
 
     private static final List<String> ALLOWED_CATEGORY_KEYWORDS = List.of(
         "카페",
-        "공원",
-        "전망대",
-        "관광",
-        "관광지",
-        "명소",
-        "드라이브",
-        "해변",
-        "해안",
-        "호수",
-        "산책",
-        "휴게소",
-        "야경",
-        "강변",
-        "자연",
-        "수목원",
-        "계곡",
-        "국립공원",
-        "산",
-        "고개",
-        "테마공원",
-        "전시공원",
-        "전망",
         "식당",
         "음식점",
         "맛집",

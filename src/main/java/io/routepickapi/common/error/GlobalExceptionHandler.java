@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -29,6 +30,14 @@ public class GlobalExceptionHandler {
         }
         String s = String.valueOf(v);
         return s.length() > 200 ? s.substring(0, 200) + "..." : v;
+    }
+
+    private static String normalizeFieldName(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return raw;
+        }
+        int lastDot = raw.lastIndexOf('.');
+        return lastDot >= 0 ? raw.substring(lastDot + 1) : raw;
     }
 
     /**
@@ -71,7 +80,30 @@ public class GlobalExceptionHandler {
             .getFieldErrors()
             .stream()
             .map(fe -> new ApiErrorResponse.ApiFieldError(
-                fe.getField(),
+                normalizeFieldName(fe.getField()),
+                fe.getDefaultMessage(),
+                safeRejectedValue(fe)
+            ))
+            .toList();
+
+        ApiErrorResponse body = ApiErrorResponse.of(
+            ErrorType.COMMON_INVALID_INPUT,
+            null,
+            req.getRequestURI(),
+            requestId(req),
+            details
+        );
+        return ResponseEntity.status(ErrorType.COMMON_INVALID_INPUT.httpStatus).body(body);
+    }
+
+    // 쿼리/모델 어트리뷰트 검증 실패
+    @ExceptionHandler(BindException.class)
+    public ResponseEntity<ApiErrorResponse> handleBind(BindException e, HttpServletRequest req) {
+        List<ApiErrorResponse.ApiFieldError> details = e.getBindingResult()
+            .getFieldErrors()
+            .stream()
+            .map(fe -> new ApiErrorResponse.ApiFieldError(
+                normalizeFieldName(fe.getField()),
                 fe.getDefaultMessage(),
                 safeRejectedValue(fe)
             ))
@@ -93,7 +125,7 @@ public class GlobalExceptionHandler {
         HttpServletRequest req) {
         List<ApiErrorResponse.ApiFieldError> details = e.getConstraintViolations().stream()
             .map(v -> new ApiErrorResponse.ApiFieldError(
-                v.getPropertyPath().toString(),
+                normalizeFieldName(v.getPropertyPath().toString()),
                 v.getMessage(),
                 v.getInvalidValue()
             ))

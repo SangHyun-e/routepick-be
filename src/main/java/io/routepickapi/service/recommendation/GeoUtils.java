@@ -26,4 +26,30 @@ public final class GeoUtils {
         double hours = distanceKm / AVERAGE_SPEED_KMH;
         return Math.max(5, (int) Math.round(hours * 60));
     }
+
+    public static double distancePointToSegmentKm(GeoPoint start, GeoPoint end, GeoPoint point) {
+        if (start == null || end == null || point == null) {
+            return 0.0;
+        }
+
+        double avgLat = Math.toRadians((start.y() + end.y() + point.y()) / 3.0);
+        double startX = Math.toRadians(start.x()) * Math.cos(avgLat) * EARTH_RADIUS_KM;
+        double startY = Math.toRadians(start.y()) * EARTH_RADIUS_KM;
+        double endX = Math.toRadians(end.x()) * Math.cos(avgLat) * EARTH_RADIUS_KM;
+        double endY = Math.toRadians(end.y()) * EARTH_RADIUS_KM;
+        double pointX = Math.toRadians(point.x()) * Math.cos(avgLat) * EARTH_RADIUS_KM;
+        double pointY = Math.toRadians(point.y()) * EARTH_RADIUS_KM;
+
+        double dx = endX - startX;
+        double dy = endY - startY;
+        if (dx == 0 && dy == 0) {
+            return Math.hypot(pointX - startX, pointY - startY);
+        }
+
+        double t = ((pointX - startX) * dx + (pointY - startY) * dy) / (dx * dx + dy * dy);
+        t = Math.max(0.0, Math.min(1.0, t));
+        double projX = startX + t * dx;
+        double projY = startY + t * dy;
+        return Math.hypot(pointX - projX, pointY - projY);
+    }
 }

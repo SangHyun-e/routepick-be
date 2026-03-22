@@ -2,6 +2,10 @@ package io.routepickapi.service.recommendation;
 
 import io.routepickapi.dto.place.KakaoPlaceSearchResponse.KakaoPlaceDocument;
 import io.routepickapi.dto.recommendation.CandidatePlace;
+import io.routepickapi.dto.recommendation.CandidateSource;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -33,7 +37,9 @@ public class KakaoPlaceNormalizer {
             document.categoryGroupCode(),
             document.categoryGroupName(),
             document.phone(),
-            document.placeUrl()
+            document.placeUrl(),
+            CandidateSource.KAKAO,
+            buildTags(document)
         );
     }
 
@@ -59,5 +65,22 @@ public class KakaoPlaceNormalizer {
         } catch (NumberFormatException ex) {
             return null;
         }
+    }
+
+    private List<String> buildTags(KakaoPlaceDocument document) {
+        List<String> tags = new ArrayList<>();
+        addTag(tags, document.categoryName());
+        addTag(tags, document.categoryGroupName());
+        addTag(tags, document.categoryGroupCode());
+        addTag(tags, "kakao");
+        return tags;
+    }
+
+    private void addTag(List<String> tags, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        tags.add(normalized);
     }
 }
