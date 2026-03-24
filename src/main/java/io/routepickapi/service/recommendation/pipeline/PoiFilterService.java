@@ -18,13 +18,22 @@ public class PoiFilterService {
 
     private static final Set<String> ALLOWLIST = Set.of(
         "전망대",
+        "전망",
+        "야경",
+        "야간",
+        "노을",
+        "스카이",
+        "브릿지",
+        "다리",
         "해안",
         "해변",
+        "바다",
         "산",
         "자연",
         "호수",
         "공원",
         "국립공원",
+        "강변",
         "드라이브",
         "카페",
         "뷰카페",
@@ -161,15 +170,55 @@ public class PoiFilterService {
             String label = relaxed ? "Theme filter relaxed" : "Theme filter removed";
             log.info("{} - requestId={}, theme={}, removed={}", label, requestId, theme, themeRemoved);
         }
-        List<Poi> candidates = themeFiltered.isEmpty() ? pois : themeFiltered;
+        List<Poi> candidates = themeFiltered.isEmpty()
+            ? (theme == null || theme == DriveTheme.DEFAULT ? pois : List.of())
+            : themeFiltered;
+        FilterOutcome outcome = applyFilters(candidates, themeRemoved, true);
+        List<Poi> results = outcome.results();
+        if (outcome.removedByNotAllowlist() > 0) {
+            if (results.size() < 3) {
+                log.info("Allowlist skipped - requestId={}, removedByAllowlist={}",
+                    requestId, outcome.removedByNotAllowlist());
+                outcome = applyFilters(candidates, themeRemoved, false);
+                results = outcome.results();
+            } else if (results.size() < 5) {
+                FilterOutcome relaxedOutcome = applyFilters(candidates, themeRemoved, false);
+                java.util.Set<String> keys = results.stream()
+                    .map(this::buildDedupKey)
+                    .collect(java.util.stream.Collectors.toSet());
+                List<Poi> merged = new java.util.ArrayList<>(results);
+                for (Poi poi : relaxedOutcome.results()) {
+                    if (merged.size() >= 5) {
+                        break;
+                    }
+                    if (keys.add(buildDedupKey(poi))) {
+                        merged.add(poi);
+                    }
+                }
+                if (merged.size() > results.size()) {
+                    log.info("Allowlist softened - requestId={}, added={}",
+                        requestId, merged.size() - results.size());
+                    results = merged;
+                }
+            }
+        }
+        log.info(
+            "POI 필터링 결과 - requestId={}, kept={}, removed={}",
+            requestId,
+            results.size(),
+            outcome.removalCounts()
+        );
+        return results;
+    }
 
+    private FilterOutcome applyFilters(List<Poi> candidates, int themeRemoved, boolean enforceAllowlist) {
         Map<String, Poi> deduplicated = new LinkedHashMap<>();
         Map<String, Integer> removalCounts = new LinkedHashMap<>();
         removalCounts.put("REMOVED_BY_BLACKLIST", 0);
         removalCounts.put("REMOVED_BY_NOT_ALLOWLIST", 0);
         removalCounts.put("REMOVED_BY_DUPLICATE", 0);
         removalCounts.put("REMOVED_BY_NULL", 0);
-        removalCounts.put("REMOVED_BY_THEME", pois.size() - candidates.size());
+        removalCounts.put("REMOVED_BY_THEME", themeRemoved);
         removalCounts.put("REMOVED_BY_GROUP", 0);
         Set<String> venueGroups = new LinkedHashSet<>();
 
@@ -184,7 +233,7 @@ public class PoiFilterService {
                 continue;
             }
 
-            if (isKakaoSource(poi) && !isAllowlisted(poi)) {
+            if (enforceAllowlist && isKakaoSource(poi) && !isAllowlisted(poi)) {
                 increment(removalCounts, "REMOVED_BY_NOT_ALLOWLIST");
                 continue;
             }
@@ -206,14 +255,18 @@ public class PoiFilterService {
             deduplicated.put(key, poi);
         }
 
-        List<Poi> results = List.copyOf(deduplicated.values());
-        log.info(
-            "POI 필터링 결과 - requestId={}, kept={}, removed={}",
-            requestId,
-            results.size(),
-            removalCounts
+        return new FilterOutcome(
+            List.copyOf(deduplicated.values()),
+            removalCounts,
+            removalCounts.get("REMOVED_BY_NOT_ALLOWLIST")
         );
-        return results;
+    }
+
+    private record FilterOutcome(
+        List<Poi> results,
+        Map<String, Integer> removalCounts,
+        int removedByNotAllowlist
+    ) {
     }
 
     private String buildDedupKey(Poi poi) {

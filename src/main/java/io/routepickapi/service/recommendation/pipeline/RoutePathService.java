@@ -1,11 +1,9 @@
 package io.routepickapi.service.recommendation.pipeline;
 
 import io.routepickapi.dto.recommendation.GeoPoint;
-import io.routepickapi.infrastructure.client.routing.RoutingClient;
+import io.routepickapi.infrastructure.client.routing.KakaoRoutingClient;
+import io.routepickapi.infrastructure.client.routing.KakaoRoutingClient.PathResult;
 import io.routepickapi.infrastructure.client.routing.dto.Coordinate;
-import io.routepickapi.infrastructure.client.routing.dto.DirectionsResponse;
-import io.routepickapi.infrastructure.client.routing.dto.Route;
-import io.routepickapi.service.recommendation.PolylineDecoder;
 import io.routepickapi.service.recommendation.RoutePath;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -26,7 +24,7 @@ public class RoutePathService {
     private static final double SNAP_OFFSET = 0.001;
     private static final int ROUTE_CACHE_LIMIT = 200;
 
-    private final RoutingClient routingClient;
+    private final KakaoRoutingClient routingClient;
     private final Map<String, RouteAttempt> routeCache = Collections.synchronizedMap(
         new LinkedHashMap<>() {
             @Override
@@ -73,35 +71,21 @@ public class RoutePathService {
             return cached;
         }
         try {
-            RoutingClient.DirectionsResult result = routingClient.fetchDirectionsResult(List.of(
+            PathResult result = routingClient.fetchRoutePath(
                 new Coordinate(origin.x(), origin.y()),
                 new Coordinate(destination.x(), destination.y())
-            ));
-            if (result.isRateLimited()) {
-                return RouteAttempt.ofRateLimited();
+            );
+            if (result.isBlocked()) {
+                return RouteAttempt.ofRateLimited(result.statusCode());
             }
-            DirectionsResponse response = result.response();
-            if (response == null || response.routes() == null || response.routes().isEmpty()) {
+            if (result.points() == null || result.points().isEmpty()) {
                 RouteAttempt failure = RouteAttempt.failure(result.statusCode());
                 routeCache.put(cacheKey, failure);
                 return failure;
             }
-            Route route = response.routes().getFirst();
-            if (route == null || route.geometry() == null || route.geometry().isBlank()) {
-                RouteAttempt failure = RouteAttempt.failure(result.statusCode());
-                routeCache.put(cacheKey, failure);
-                return failure;
-            }
-            String geometry = route.geometry().trim();
-            if (geometry.startsWith("[") || geometry.startsWith("{")) {
-                RouteAttempt success = RouteAttempt.success(new RoutePath(List.of(origin, destination), false));
-                routeCache.put(cacheKey, success);
-                return success;
-            }
-            List<GeoPoint> decoded = PolylineDecoder.decode(geometry);
-            List<GeoPoint> points = shrink(decoded);
+            List<GeoPoint> points = result.routingBased() ? shrink(result.points()) : result.points();
             if (points.size() >= 2) {
-                RouteAttempt success = RouteAttempt.success(new RoutePath(points, true));
+                RouteAttempt success = RouteAttempt.success(new RoutePath(points, result.routingBased()));
                 routeCache.put(cacheKey, success);
                 return success;
             }
@@ -182,8 +166,8 @@ public class RoutePathService {
             return new RouteAttempt(null, statusCode, false);
         }
 
-        private static RouteAttempt ofRateLimited() {
-            return new RouteAttempt(null, 429, true);
+        private static RouteAttempt ofRateLimited(Integer statusCode) {
+            return new RouteAttempt(null, statusCode == null ? 429 : statusCode, true);
         }
 
         private boolean notFound() {
