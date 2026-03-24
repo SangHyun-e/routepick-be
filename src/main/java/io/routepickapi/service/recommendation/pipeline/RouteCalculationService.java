@@ -5,9 +5,11 @@ import io.routepickapi.domain.course.CourseStop;
 import io.routepickapi.domain.poi.Poi;
 import io.routepickapi.domain.recommendation.ScoreBreakdown;
 import io.routepickapi.dto.recommendation.GeoPoint;
-import io.routepickapi.infrastructure.client.routing.RoutingClient;
+import io.routepickapi.infrastructure.client.routing.KakaoRoutingClient;
+import io.routepickapi.infrastructure.client.routing.KakaoRoutingClient.SegmentResult;
 import io.routepickapi.infrastructure.client.routing.dto.Coordinate;
-import io.routepickapi.infrastructure.client.routing.dto.MatrixResponse;
+import io.routepickapi.service.recommendation.RecommendationCacheService;
+import io.routepickapi.service.recommendation.RouteMetricsService.RouteLegMetrics;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -21,7 +23,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class RouteCalculationService {
 
-    private final RoutingClient routingClient;
+    private final KakaoRoutingClient routingClient;
+    private final RecommendationCacheService cacheService;
 
     public List<Course> calculate(
         List<CoursePlan> plans,
@@ -55,13 +58,6 @@ public class RouteCalculationService {
                 continue;
             }
 
-            List<Coordinate> coordinates = new ArrayList<>();
-            coordinates.add(new Coordinate(origin.x(), origin.y()));
-            for (Poi stop : stops) {
-                coordinates.add(new Coordinate(stop.lng(), stop.lat()));
-            }
-            coordinates.add(new Coordinate(destination.x(), destination.y()));
-
             if (fallbackOnly) {
                 Course fallback = buildFallbackCourse(stops, origin, destination, region, theme);
                 if (fallback != null) {
@@ -72,27 +68,22 @@ public class RouteCalculationService {
             }
 
             routingRequests++;
-            MatrixResponse matrix = routingClient.fetchMatrix(coordinates);
-            if (matrix == null || matrix.distances() == null || matrix.durations() == null
-                || matrix.distances().isEmpty() || matrix.durations().isEmpty()) {
-                routingFailures++;
-                fallbackOnly = true;
-                Course fallback = buildFallbackCourse(stops, origin, destination, region, theme);
-                if (fallback != null) {
-                    courses.add(fallback);
-                    fallbackCourses++;
-                }
-                continue;
-            }
             List<CourseStop> courseStops = new ArrayList<>();
             double totalDistance = 0.0;
             Duration totalDuration = Duration.ZERO;
             boolean invalid = false;
+            GeoPoint previous = origin;
 
             for (int index = 0; index < stops.size(); index++) {
                 Poi poi = stops.get(index);
-                double segmentDistance = resolveSegmentDistance(matrix, index + 1);
-                Duration segmentDuration = resolveSegmentDuration(matrix, index + 1);
+                GeoPoint current = new GeoPoint(poi.lng(), poi.lat());
+                RouteLegMetrics segment = fetchSegmentMetrics(previous, current);
+                if (segment == null) {
+                    invalid = true;
+                    break;
+                }
+                double segmentDistance = segment.distanceKm();
+                Duration segmentDuration = toDuration(segment.durationMinutes());
                 if (segmentDistance > 0 && segmentDuration.isZero()) {
                     invalid = true;
                     break;
@@ -105,17 +96,23 @@ public class RouteCalculationService {
                     poi.stayDuration(),
                     segmentDistance,
                     segmentDuration,
-                    false
+                    !segment.routingSuccess()
                 ));
+                previous = current;
             }
 
-            double finalLegDistance = resolveSegmentDistance(matrix, stops.size() + 1);
-            Duration finalLegDuration = resolveSegmentDuration(matrix, stops.size() + 1);
-            if (finalLegDistance > 0 && finalLegDuration.isZero()) {
+            RouteLegMetrics finalSegment = invalid ? null : fetchSegmentMetrics(previous, destination);
+            if (finalSegment == null) {
                 invalid = true;
+            } else {
+                double finalLegDistance = finalSegment.distanceKm();
+                Duration finalLegDuration = toDuration(finalSegment.durationMinutes());
+                if (finalLegDistance > 0 && finalLegDuration.isZero()) {
+                    invalid = true;
+                }
+                totalDistance += finalLegDistance;
+                totalDuration = totalDuration.plus(finalLegDuration);
             }
-            totalDistance += finalLegDistance;
-            totalDuration = totalDuration.plus(finalLegDuration);
 
             if (invalid || totalDistance <= 1.0) {
                 routingFailures++;
@@ -143,7 +140,7 @@ public class RouteCalculationService {
         }
 
         log.info(
-            "Routing matrix summary - requests={}, success={}, failures={}, fallbackCourses={}, fallbackOnly={}",
+            "Routing summary - requests={}, success={}, failures={}, fallbackCourses={}, fallbackOnly={}",
             routingRequests,
             routingSuccess,
             routingFailures,
@@ -228,29 +225,70 @@ public class RouteCalculationService {
         return io.routepickapi.service.recommendation.GeoUtils.estimateMinutes(distanceKm);
     }
 
-    private double resolveSegmentDistance(MatrixResponse matrix, int index) {
-        if (matrix == null || matrix.distances() == null || index <= 0) {
-            return 0.0;
+    private RouteLegMetrics fetchSegmentMetrics(GeoPoint origin, GeoPoint destination) {
+        String segmentKey = buildSegmentCacheKey(origin, destination);
+        RouteLegMetrics cached = cacheService.getRouteMetrics(segmentKey);
+        if (cached != null) {
+            return cached;
         }
-        return safeMatrixValue(matrix.distances(), index - 1, index);
+        SegmentResult result;
+        try {
+            result = routingClient.fetchSegmentMetrics(
+                new Coordinate(origin.x(), origin.y()),
+                new Coordinate(destination.x(), destination.y())
+            );
+        } catch (Exception ex) {
+            log.debug("Routing segment fallback", ex);
+            RouteLegMetrics fallback = fallbackSegmentMetrics(origin, destination, false);
+            cacheService.putRouteMetrics(segmentKey, fallback);
+            return null;
+        }
+        if (result == null) {
+            return null;
+        }
+        if (result.isBlocked()) {
+            RouteLegMetrics fallback = fallbackSegmentMetrics(origin, destination, false);
+            cacheService.putRouteMetrics(segmentKey, fallback);
+            return null;
+        }
+        RouteLegMetrics metrics;
+        if (result.routingSuccess() && (result.distanceKm() > 0 || result.durationMinutes() > 0)) {
+            metrics = new RouteLegMetrics(result.distanceKm(), result.durationMinutes(), true);
+        } else {
+            metrics = fallbackSegmentMetrics(origin, destination, false);
+        }
+        cacheService.putRouteMetrics(segmentKey, metrics);
+        return metrics;
     }
 
-    private Duration resolveSegmentDuration(MatrixResponse matrix, int index) {
-        if (matrix == null || matrix.durations() == null || index <= 0) {
+    private RouteLegMetrics fallbackSegmentMetrics(
+        GeoPoint origin,
+        GeoPoint destination,
+        boolean routingSuccess
+    ) {
+        double distanceKm = estimateDistance(origin, destination);
+        return new RouteLegMetrics(distanceKm, estimateMinutes(distanceKm), routingSuccess);
+    }
+
+    private String buildSegmentCacheKey(GeoPoint origin, GeoPoint destination) {
+        return new StringBuilder("route-metrics-segment:")
+            .append(formatPoint(origin))
+            .append(":")
+            .append(formatPoint(destination))
+            .toString();
+    }
+
+    private String formatPoint(GeoPoint point) {
+        if (point == null) {
+            return "0.00000,0.00000";
+        }
+        return String.format("%.5f,%.5f", point.y(), point.x());
+    }
+
+    private Duration toDuration(double minutes) {
+        if (minutes <= 0) {
             return Duration.ZERO;
         }
-        double seconds = safeMatrixValue(matrix.durations(), index - 1, index);
-        return Duration.ofSeconds(Math.max(0, Math.round(seconds)));
-    }
-
-    private double safeMatrixValue(List<List<Double>> matrix, int from, int to) {
-        if (from < 0 || to < 0 || from >= matrix.size()) {
-            return 0.0;
-        }
-        List<Double> row = matrix.get(from);
-        if (row == null || to >= row.size() || row.get(to) == null) {
-            return 0.0;
-        }
-        return row.get(to);
+        return Duration.ofSeconds(Math.max(0, Math.round(minutes * 60.0)));
     }
 }

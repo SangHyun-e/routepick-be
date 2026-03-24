@@ -48,7 +48,42 @@ public class RecommendationFacade {
     private static final double MAX_ROUTE_DEVIATION_KM = 3.0;
     private static final double COURSE_SIMILARITY_THRESHOLD = 0.75;
     private static final double COURSE_NAME_SIMILARITY_THRESHOLD = 0.7;
-    private static final List<String> KAKAO_CAFE_KEYWORDS = List.of("카페", "뷰카페");
+    private static final List<String> KAKAO_CAFE_KEYWORDS = List.of(
+        "카페",
+        "뷰카페",
+        "커피",
+        "디저트",
+        "베이커리",
+        "브런치",
+        "테라스",
+        "루프탑"
+    );
+    private static final List<String> KAKAO_NATURE_KEYWORDS = List.of(
+        "전망대",
+        "해변",
+        "해안",
+        "바다",
+        "공원",
+        "산",
+        "숲",
+        "호수",
+        "강변",
+        "계곡",
+        "자연",
+        "수목원",
+        "자연휴양림"
+    );
+    private static final List<String> KAKAO_NIGHT_KEYWORDS = List.of(
+        "야경",
+        "전망",
+        "노을",
+        "야간",
+        "브릿지",
+        "다리",
+        "스카이",
+        "루프탑",
+        "드라이브"
+    );
     private static final double ORIGIN_CLUSTER_LIMIT_KM = 1.0;
     private static final double MIN_COURSE_SCORE = 55.0;
     private static final int MAX_INCLUDE_STOPS = 3;
@@ -193,7 +228,8 @@ public class RecommendationFacade {
             corridor,
             routeMetrics,
             routePath,
-            requestId
+            requestId,
+            false
         );
         log.info("Curated radius filter - requestId={}, before={}, after={}",
             requestId, curatedThemeFiltered.size(), curatedCorridor.size());
@@ -202,17 +238,21 @@ public class RecommendationFacade {
             requestId, curatedTotal, curatedFiltered.size());
 
         int candidateTarget = resolveCap(routingCandidateCap, DEFAULT_ROUTING_CANDIDATE_CAP);
+        boolean themedRequest = themeType != null && themeType != DriveTheme.DEFAULT;
+        int externalMin = themedRequest ? Math.max(3, candidateTarget / 2) : 0;
+        int curatedMax = themedRequest ? Math.max(0, candidateTarget - externalMin) : candidateTarget;
         int remaining = Math.max(0, candidateTarget - curatedFiltered.size());
         RawPoiBundle rawPoiBundle = new RawPoiBundle(List.of(), List.of());
-        if (remaining > 0) {
+        if (themedRequest || remaining > 0) {
+            List<String> tourContentTypes = themeType == DriveTheme.CAFE ? List.of() : null;
             PoiCollectionRequest collectionRequest = new PoiCollectionRequest(
                 command.originLat(),
                 command.originLng(),
                 command.destinationLat(),
                 command.destinationLng(),
                 radius,
-                KAKAO_CAFE_KEYWORDS,
-                null
+                resolveKakaoKeywords(themeType),
+                tourContentTypes
             );
 
             rawPoiBundle = poiCollectorService.collect(collectionRequest);
@@ -238,7 +278,8 @@ public class RecommendationFacade {
             corridor,
             routeMetrics,
             routePath,
-            requestId
+            requestId,
+            true
         );
         List<Poi> combined = new java.util.ArrayList<>();
         combined.addAll(curatedFiltered);
@@ -251,6 +292,29 @@ public class RecommendationFacade {
             List<Poi> relaxedOrigin = filterOriginCluster(relaxedTheme, originPoint, requestId);
             originFiltered = relaxedOrigin.isEmpty() ? relaxedTheme : relaxedOrigin;
         }
+        originFiltered = new java.util.ArrayList<>(originFiltered);
+        if (themedRequest && originFiltered.size() < candidateTarget && !combined.isEmpty()) {
+            int supplementLimit = Math.min(3, candidateTarget - originFiltered.size());
+            if (supplementLimit > 0) {
+                List<Poi> supplementPool = poiFilterService.filter(combined, DriveTheme.DEFAULT, requestId);
+                java.util.Set<String> existing = originFiltered.stream()
+                    .map(this::poiKey)
+                    .collect(java.util.stream.Collectors.toSet());
+                List<PoiScoringService.ScoredPoi> supplementScores = poiScoringService.score(
+                    supplementPool.stream().filter(poi -> !existing.contains(poiKey(poi))).toList(),
+                    themeType,
+                    routeMetrics,
+                    routePath
+                );
+                List<Poi> supplementSelections = supplementScores.stream()
+                    .sorted(java.util.Comparator.comparingDouble(PoiScoringService.ScoredPoi::totalScore).reversed())
+                    .limit(supplementLimit)
+                    .map(PoiScoringService.ScoredPoi::poi)
+                    .toList();
+                supplementSelections.forEach(originFiltered::add);
+                log.info("Theme supplement applied - requestId={}, added={}", requestId, supplementSelections.size());
+            }
+        }
         List<PoiScoringService.ScoredPoi> scoredCandidates = poiScoringService.score(
             originFiltered,
             themeType,
@@ -261,7 +325,12 @@ public class RecommendationFacade {
             .limit(5)
             .map(PoiScoringService.ScoredPoi::poi)
             .toList();
-        List<Poi> cappedCandidates = selectBalancedCandidates(scoredCandidates, candidateTarget);
+        List<Poi> cappedCandidates = selectBalancedCandidates(
+            scoredCandidates,
+            candidateTarget,
+            externalMin,
+            curatedMax
+        );
         long curatedUsed = cappedCandidates.stream()
             .filter(poi -> poi != null && "CURATED".equalsIgnoreCase(poi.source()))
             .count();
@@ -427,13 +496,16 @@ public class RecommendationFacade {
 
     private List<Poi> selectBalancedCandidates(
         List<PoiScoringService.ScoredPoi> scored,
-        int limit
+        int limit,
+        int externalMin,
+        int curatedMax
     ) {
         if (scored == null || scored.isEmpty()) {
             return List.of();
         }
         int cap = resolveCap(limit, DEFAULT_ROUTING_CANDIDATE_CAP);
-        java.util.Map<Integer, java.util.Deque<PoiScoringService.ScoredPoi>> segments = new java.util.LinkedHashMap<>();
+        int safeExternalMin = Math.max(0, Math.min(externalMin, cap));
+        int safeCuratedMax = curatedMax <= 0 ? cap : Math.min(curatedMax, cap);
         java.util.Comparator<PoiScoringService.ScoredPoi> comparator = (left, right) -> {
             int priority = Integer.compare(right.sourcePriority(), left.sourcePriority());
             if (priority != 0) {
@@ -442,6 +514,58 @@ public class RecommendationFacade {
             return Double.compare(right.totalScore(), left.totalScore());
         };
 
+        List<PoiScoringService.ScoredPoi> external = scored.stream()
+            .filter(item -> !isCurated(item.poi()))
+            .toList();
+        List<PoiScoringService.ScoredPoi> curated = scored.stream()
+            .filter(item -> isCurated(item.poi()))
+            .toList();
+
+        int externalAvailable = external.size();
+        int effectiveExternalMin = Math.min(safeExternalMin, externalAvailable);
+        int effectiveCuratedMax = Math.min(cap, Math.max(safeCuratedMax, cap - effectiveExternalMin));
+        List<Poi> selected = new java.util.ArrayList<>();
+        java.util.Set<String> selectedKeys = new java.util.HashSet<>();
+        int externalTarget = effectiveExternalMin;
+        int curatedTarget = Math.min(effectiveCuratedMax, cap - externalTarget);
+
+        selectBySegment(external, externalTarget, comparator, selected, selectedKeys);
+        selectBySegment(curated, curatedTarget, comparator, selected, selectedKeys);
+
+        int curatedCount = (int) selected.stream().filter(this::isCurated).count();
+        if (selected.size() < cap) {
+            List<PoiScoringService.ScoredPoi> remaining = scored.stream()
+                .filter(item -> !selectedKeys.contains(poiKey(item.poi())))
+                .sorted(comparator)
+                .toList();
+            for (PoiScoringService.ScoredPoi candidate : remaining) {
+                if (selected.size() >= cap) {
+                    break;
+                }
+                if (isCurated(candidate.poi()) && curatedCount >= effectiveCuratedMax) {
+                    continue;
+                }
+                selected.add(candidate.poi());
+                selectedKeys.add(poiKey(candidate.poi()));
+                if (isCurated(candidate.poi())) {
+                    curatedCount++;
+                }
+            }
+        }
+        return selected;
+    }
+
+    private void selectBySegment(
+        List<PoiScoringService.ScoredPoi> scored,
+        int limit,
+        java.util.Comparator<PoiScoringService.ScoredPoi> comparator,
+        List<Poi> selected,
+        java.util.Set<String> selectedKeys
+    ) {
+        if (limit <= 0 || scored.isEmpty()) {
+            return;
+        }
+        java.util.Map<Integer, java.util.Deque<PoiScoringService.ScoredPoi>> segments = new java.util.LinkedHashMap<>();
         for (int segment = 0; segment < 3; segment++) {
             int segmentIndex = segment;
             List<PoiScoringService.ScoredPoi> segmentScores = scored.stream()
@@ -451,33 +575,27 @@ public class RecommendationFacade {
             segments.put(segment, new java.util.ArrayDeque<>(segmentScores));
         }
 
-        List<Poi> selected = new java.util.ArrayList<>();
+        int addedCount = 0;
         boolean added = true;
-        while (selected.size() < cap && added) {
+        while (addedCount < limit && added) {
             added = false;
             for (int segment = 0; segment < 3; segment++) {
                 java.util.Deque<PoiScoringService.ScoredPoi> queue = segments.get(segment);
-                if (queue == null || queue.isEmpty()) {
-                    continue;
+                while (queue != null && !queue.isEmpty()) {
+                    PoiScoringService.ScoredPoi candidate = queue.pollFirst();
+                    String key = poiKey(candidate.poi());
+                    if (selectedKeys.add(key)) {
+                        selected.add(candidate.poi());
+                        addedCount++;
+                        added = true;
+                        break;
+                    }
                 }
-                if (selected.size() >= cap) {
+                if (addedCount >= limit) {
                     break;
                 }
-                selected.add(queue.pollFirst().poi());
-                added = true;
             }
         }
-
-        if (selected.size() < cap) {
-            List<PoiScoringService.ScoredPoi> remaining = new java.util.ArrayList<>();
-            segments.values().forEach(remaining::addAll);
-            remaining.stream()
-                .sorted(comparator)
-                .limit(cap - selected.size())
-                .map(PoiScoringService.ScoredPoi::poi)
-                .forEach(selected::add);
-        }
-        return selected;
     }
 
     private int resolveCap(int value, int fallback) {
@@ -1014,12 +1132,24 @@ public class RecommendationFacade {
         return name + "|" + latKey + "|" + lngKey;
     }
 
+    private String poiKey(Poi poi) {
+        if (poi == null) {
+            return "";
+        }
+        return poi.source() + ":" + poi.externalId();
+    }
+
+    private boolean isCurated(Poi poi) {
+        return poi != null && "CURATED".equalsIgnoreCase(poi.source());
+    }
+
     private List<Poi> filterByCorridor(
         List<Poi> pois,
         RouteCorridor corridor,
         RouteMetrics routeMetrics,
         io.routepickapi.service.recommendation.RoutePath routePath,
-        String requestId
+        String requestId,
+        boolean fallbackToOriginal
     ) {
         if (pois == null || pois.isEmpty()) {
             return List.of();
@@ -1065,9 +1195,13 @@ public class RecommendationFacade {
         }
 
         if (filtered.isEmpty()) {
-            log.info("Route corridor fallback - requestId={}, remaining=0, fallbackToOriginal={}",
-                requestId, pois.size());
-            return pois;
+            if (fallbackToOriginal) {
+                log.info("Route corridor fallback - requestId={}, remaining=0, fallbackToOriginal={}",
+                    requestId, pois.size());
+                return pois;
+            }
+            log.info("Route corridor empty - requestId={}, remaining=0", requestId);
+            return List.of();
         }
 
         if (removed > 0) {
@@ -1078,6 +1212,19 @@ public class RecommendationFacade {
             log.info("Route corridor relaxed - requestId={}, relaxedCount={}", requestId, relaxed);
         }
         return filtered;
+    }
+
+    private List<String> resolveKakaoKeywords(DriveTheme theme) {
+        if (theme == DriveTheme.NATURE) {
+            return KAKAO_NATURE_KEYWORDS;
+        }
+        if (theme == DriveTheme.NIGHT) {
+            return KAKAO_NIGHT_KEYWORDS;
+        }
+        if (theme == DriveTheme.CAFE) {
+            return KAKAO_CAFE_KEYWORDS;
+        }
+        return List.of();
     }
 
     private double estimateDetourKm(RouteMetrics routeMetrics, GeoPoint origin, GeoPoint destination, GeoPoint point) {

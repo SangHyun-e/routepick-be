@@ -18,9 +18,13 @@ public class PoiThemePolicy {
         "강변",
         "둘레길",
         "호수",
+        "바다",
+        "해변",
+        "해안",
         "자연",
         "계곡",
         "산책",
+        "산책로",
         "수목원",
         "자연휴양림"
     );
@@ -46,6 +50,8 @@ public class PoiThemePolicy {
     private static final Set<String> CAFE_ALLOW = Set.of(
         "카페",
         "뷰카페",
+        "커피",
+        "디저트",
         "루프탑",
         "오션뷰",
         "대형",
@@ -83,10 +89,14 @@ public class PoiThemePolicy {
     private static final Set<String> NIGHT_ALLOW = Set.of(
         "야경",
         "전망",
+        "전망대",
         "조명",
         "한강",
         "드라이브",
         "야간",
+        "노을",
+        "일몰",
+        "일출",
         "루프탑",
         "브릿지",
         "다리",
@@ -170,7 +180,7 @@ public class PoiThemePolicy {
             return !matchesAny(poi, CORE_EXCLUDE);
         }
         if (theme == DriveTheme.CAFE) {
-            return matchesAny(poi, CAFE_ALLOW) && !matchesAny(poi, CAFE_EXCLUDE);
+            return !matchesAny(poi, CAFE_EXCLUDE);
         }
         if (theme == DriveTheme.NIGHT) {
             return matchesAny(poi, NIGHT_ALLOW) || !matchesAny(poi, NIGHT_EXCLUDE);
