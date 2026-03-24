@@ -73,9 +73,8 @@ external:
     mobile-os: ${TOUR_API_MOBILE_OS:ETC}
     mobile-app: ${TOUR_API_MOBILE_APP:RoutePick}
   routing:
-    base-url: ${ROUTING_BASE_URL:https://api.openrouteservice.org}
-    api-key: ${ROUTING_API_KEY:}
-    profile: ${ROUTING_PROFILE:driving-car}
+    kakao-base-url: ${ROUTING_KAKAO_BASE_URL:https://apis-navi.kakaomobility.com}
+    kakao-api-key: ${ROUTING_KAKAO_API_KEY:}
   weather:
     kma:
       base-url: ${KMA_BASE_URL:https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0}
@@ -85,7 +84,7 @@ external:
 드라이브 추천 필수 환경변수 예시:
 - `KAKAO_REST_API_KEY`
 - `TOUR_API_KEY`
-- `ROUTING_API_KEY`
+- `ROUTING_KAKAO_API_KEY`
 - `KMA_SERVICE_KEY`
 
 ---

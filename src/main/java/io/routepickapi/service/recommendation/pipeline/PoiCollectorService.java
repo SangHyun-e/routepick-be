@@ -63,9 +63,14 @@ public class PoiCollectorService {
         List<String> kakaoKeywords = request.kakaoKeywords() == null || request.kakaoKeywords().isEmpty()
             ? DEFAULT_KAKAO_KEYWORDS
             : request.kakaoKeywords();
-        List<String> tourContentTypes = request.tourContentTypeIds() == null || request.tourContentTypeIds().isEmpty()
-            ? DEFAULT_TOUR_CONTENT_TYPES
-            : request.tourContentTypeIds();
+        List<String> tourContentTypes;
+        if (request.tourContentTypeIds() == null) {
+            tourContentTypes = DEFAULT_TOUR_CONTENT_TYPES;
+        } else if (request.tourContentTypeIds().isEmpty()) {
+            tourContentTypes = List.of();
+        } else {
+            tourContentTypes = request.tourContentTypeIds();
+        }
         List<SearchPoint> searchPoints = buildSearchPoints(request);
         log.info("POI collect config - kakaoCap={}, tourCap={}, searchPoints={}",
             kakaoCap,
@@ -152,6 +157,10 @@ public class PoiCollectorService {
         int radius,
         List<String> contentTypes
     ) {
+        if (contentTypes == null || contentTypes.isEmpty()) {
+            log.info("TourAPI POI 수집 skipped - reason=disabled");
+            return List.of();
+        }
         List<TourItem> results = new ArrayList<>();
         int cap = Math.max(1, tourCap > 0 ? tourCap : DEFAULT_TOUR_CAP);
         for (SearchPoint point : searchPoints) {

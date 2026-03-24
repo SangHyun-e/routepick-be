@@ -2,9 +2,9 @@ package io.routepickapi.service.recommendation;
 
 import io.routepickapi.dto.recommendation.CandidatePlace;
 import io.routepickapi.dto.recommendation.GeoPoint;
-import io.routepickapi.infrastructure.client.routing.RoutingClient;
+import io.routepickapi.infrastructure.client.routing.KakaoRoutingClient;
+import io.routepickapi.infrastructure.client.routing.KakaoRoutingClient.SegmentResult;
 import io.routepickapi.infrastructure.client.routing.dto.Coordinate;
-import io.routepickapi.infrastructure.client.routing.dto.MatrixResponse;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +19,7 @@ public class RouteMetricsService {
     private static final double MIN_CORRIDOR_RADIUS_KM = 6.0;
     private static final double CORRIDOR_RATIO = 0.4;
 
-    private final RoutingClient routingClient;
+    private final KakaoRoutingClient routingClient;
     private final RecommendationCacheService cacheService;
 
     public RouteMetrics buildMetrics(GeoPoint origin, GeoPoint destination, double maxDetourKm) {
@@ -72,44 +72,44 @@ public class RouteMetricsService {
             return cached;
         }
         log.info("Route metrics cache miss - key={}", cacheKey);
-        List<Coordinate> coordinates = new ArrayList<>();
-        coordinates.add(new Coordinate(origin.x(), origin.y()));
+        List<GeoPoint> legs = new ArrayList<>();
+        legs.add(origin);
         if (stops != null) {
             for (CandidatePlace stop : stops) {
-                coordinates.add(new Coordinate(stop.x(), stop.y()));
+                legs.add(new GeoPoint(stop.x(), stop.y()));
             }
         }
-        coordinates.add(new Coordinate(destination.x(), destination.y()));
+        legs.add(destination);
 
-        try {
-            MatrixResponse matrix = routingClient.fetchMatrix(coordinates);
-            if (matrix == null || matrix.distances() == null || matrix.durations() == null
-                || matrix.distances().isEmpty() || matrix.durations().isEmpty()) {
+        double distanceKm = 0.0;
+        double durationMinutes = 0.0;
+        boolean routingSuccess = true;
+        for (int index = 1; index < legs.size(); index++) {
+            GeoPoint from = legs.get(index - 1);
+            GeoPoint to = legs.get(index);
+            RouteLegMetrics segment = fetchSegmentMetrics(from, to);
+            if (segment == null) {
                 RouteLegMetrics result = fallbackMetrics(origin, destination, stops, false);
-                log.info("Route metrics routing fallback - key={}", cacheKey);
+                log.info("Route metrics routing blocked - key={}", cacheKey);
                 cacheService.putRouteMetrics(cacheKey, result);
                 return result;
             }
-            double distanceKm = sumSequential(matrix.distances());
-            double durationSeconds = sumSequential(matrix.durations());
-            double durationMinutes = durationSeconds <= 0 ? 0.0 : durationSeconds / 60.0;
-            if (distanceKm <= 0 && durationMinutes <= 0) {
-                RouteLegMetrics result = fallbackMetrics(origin, destination, stops, false);
-                log.info("Route metrics routing fallback - key={}", cacheKey);
-                cacheService.putRouteMetrics(cacheKey, result);
-                return result;
-            }
-            RouteLegMetrics result = new RouteLegMetrics(distanceKm, durationMinutes, true);
-            log.info("Route metrics routing success - key={}", cacheKey);
-            cacheService.putRouteMetrics(cacheKey, result);
-            return result;
-        } catch (Exception ex) {
-            log.debug("Routing metrics fallback", ex);
+            distanceKm += segment.distanceKm();
+            durationMinutes += segment.durationMinutes();
+            routingSuccess = routingSuccess && segment.routingSuccess();
+        }
+
+        if (distanceKm <= 0 && durationMinutes <= 0) {
             RouteLegMetrics result = fallbackMetrics(origin, destination, stops, false);
             log.info("Route metrics routing fallback - key={}", cacheKey);
             cacheService.putRouteMetrics(cacheKey, result);
             return result;
         }
+
+        RouteLegMetrics result = new RouteLegMetrics(distanceKm, durationMinutes, routingSuccess);
+        log.info("Route metrics routing success - key={}", cacheKey);
+        cacheService.putRouteMetrics(cacheKey, result);
+        return result;
     }
 
     private RouteLegMetrics fallbackMetrics(
@@ -131,26 +131,51 @@ public class RouteMetricsService {
         return new RouteLegMetrics(distanceKm, GeoUtils.estimateMinutes(distanceKm), routingSuccess);
     }
 
-    private double sumSequential(List<List<Double>> matrix) {
-        if (matrix == null || matrix.size() < 2) {
-            return 0.0;
+    private RouteLegMetrics fetchSegmentMetrics(GeoPoint origin, GeoPoint destination) {
+        String segmentKey = buildSegmentCacheKey(origin, destination);
+        RouteLegMetrics cached = cacheService.getRouteMetrics(segmentKey);
+        if (cached != null) {
+            log.info("Route segment cache hit - key={}", segmentKey);
+            return cached;
         }
-        double sum = 0.0;
-        for (int index = 1; index < matrix.size(); index++) {
-            sum += safeMatrixValue(matrix, index - 1, index);
+        log.info("Route segment cache miss - key={}", segmentKey);
+        SegmentResult result;
+        try {
+            result = routingClient.fetchSegmentMetrics(
+                new Coordinate(origin.x(), origin.y()),
+                new Coordinate(destination.x(), destination.y())
+            );
+        } catch (Exception ex) {
+            log.debug("Routing segment fallback", ex);
+            RouteLegMetrics fallback = fallbackSegmentMetrics(origin, destination, false);
+            cacheService.putRouteMetrics(segmentKey, fallback);
+            return null;
         }
-        return sum;
+        if (result == null) {
+            return null;
+        }
+        if (result.isBlocked()) {
+            RouteLegMetrics fallback = fallbackSegmentMetrics(origin, destination, false);
+            cacheService.putRouteMetrics(segmentKey, fallback);
+            return null;
+        }
+        RouteLegMetrics metrics;
+        if (result.routingSuccess() && (result.distanceKm() > 0 || result.durationMinutes() > 0)) {
+            metrics = new RouteLegMetrics(result.distanceKm(), result.durationMinutes(), true);
+        } else {
+            metrics = fallbackSegmentMetrics(origin, destination, false);
+        }
+        cacheService.putRouteMetrics(segmentKey, metrics);
+        return metrics;
     }
 
-    private double safeMatrixValue(List<List<Double>> matrix, int from, int to) {
-        if (from < 0 || to < 0 || from >= matrix.size()) {
-            return 0.0;
-        }
-        List<Double> row = matrix.get(from);
-        if (row == null || to >= row.size() || row.get(to) == null) {
-            return 0.0;
-        }
-        return row.get(to);
+    private RouteLegMetrics fallbackSegmentMetrics(
+        GeoPoint origin,
+        GeoPoint destination,
+        boolean routingSuccess
+    ) {
+        double distanceKm = GeoUtils.distanceKm(origin, destination);
+        return new RouteLegMetrics(distanceKm, GeoUtils.estimateMinutes(distanceKm), routingSuccess);
     }
 
     private String buildCacheKey(GeoPoint origin, GeoPoint destination, List<CandidatePlace> stops) {
@@ -165,6 +190,14 @@ public class RouteMetricsService {
             }
         }
         return builder.toString();
+    }
+
+    private String buildSegmentCacheKey(GeoPoint origin, GeoPoint destination) {
+        return new StringBuilder("route-metrics-segment:")
+            .append(formatPoint(origin))
+            .append(":")
+            .append(formatPoint(destination))
+            .toString();
     }
 
     private String formatPoint(GeoPoint point) {
