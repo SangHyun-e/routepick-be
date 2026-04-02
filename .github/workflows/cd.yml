@@ -6,7 +6,7 @@ on:
       ref:
         description: Branch or tag to deploy
         required: true
-        default: dev
+        default: main
 
 permissions:
   contents: read
