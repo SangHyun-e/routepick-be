@@ -42,6 +42,13 @@ io.routepickapi
 
 ---
 
+## 🤖 CI/CD (GitHub Actions)
+- CI: `dev` 브랜치 push/PR 시 `./gradlew clean build` 수행
+- CD: `workflow_dispatch`로 EC2에 수동 배포(`docker compose`)
+- GitHub Secrets: `EC2_HOST`, `EC2_USER`, `EC2_SSH_KEY`
+
+---
+
 ### 🐳 Docker Compose (prod)
 
 ```
