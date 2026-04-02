@@ -1,6 +1,8 @@
 name: CD
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       ref:
@@ -14,6 +16,9 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production
+    env:
+      TARGET_REF: ${{ inputs.ref || github.ref_name }}
     steps:
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.3
@@ -25,7 +30,7 @@ jobs:
             set -e
             cd /home/ubuntu/routepick-be
             git fetch --all
-            git checkout ${{ inputs.ref }}
-            git pull origin ${{ inputs.ref }}
+            git checkout ${{ env.TARGET_REF }}
+            git pull origin ${{ env.TARGET_REF }}
             docker compose -f docker-compose.prod.yml up -d --build
             docker compose -f docker-compose.prod.yml ps
